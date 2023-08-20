@@ -246,6 +246,9 @@ stdenv.mkDerivation (finalAttrs: {
     mkdir -p .hydra-data
     export HYDRA_DATA="$(pwd)/.hydra-data"
     export HYDRA_DBI='dbi:Pg:dbname=hydra;host=localhost;port=64444'
+    export PGPORT=64444
+    export PGDATABASE=hydra
+    export PGHOST=localhost
 
     popd >/dev/null
   '';
