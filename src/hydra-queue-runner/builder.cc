@@ -1,5 +1,6 @@
 #include <cmath>
 
+#include "error.hh"
 #include "state.hh"
 #include "hydra-build-result.hh"
 #include "finally.hh"
@@ -185,7 +186,7 @@ State::StepResult State::doBuildStep(nix::ref<Store> destStore,
                     unlink(result.logFile.c_str());
                 }
             } catch (...) {
-                ignoreException();
+                ignoreExceptionInDestructor();
             }
         }
     });
