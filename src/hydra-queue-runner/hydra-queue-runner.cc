@@ -16,6 +16,7 @@
 #include "hydra-build-result.hh"
 #include "store-api.hh"
 
+#include "args.hh"
 #include "globals.hh"
 #include "hydra-config.hh"
 #include "s3-binary-cache-store.hh"
@@ -868,7 +869,7 @@ void State::run(BuildID buildOne)
         << metricsAddr << "/metrics (port " << exposerPort << ")"
         << std::endl;
 
-    Store::Params localParams;
+    StoreConfig::Params localParams;
     localParams["max-connections"] = "16";
     localParams["max-connection-age"] = "600";
     localStore = openStore(getEnv("NIX_REMOTE").value_or(""), localParams);
@@ -973,7 +974,7 @@ int main(int argc, char * * argv)
         BuildID buildOne = 0;
         std::optional<std::string> metricsAddrOpt = std::nullopt;
 
-        parseCmdLine(argc, argv, [&](Strings::iterator & arg, const Strings::iterator & end) {
+        LegacyArgs(argv[0], [&](Strings::iterator & arg, const Strings::iterator & end) {
             if (*arg == "--unlock")
                 unlock = true;
             else if (*arg == "--status")
@@ -988,7 +989,7 @@ int main(int argc, char * * argv)
             } else
                 return false;
             return true;
-        });
+        }).parseCmdline(Strings(argv + 1, argv + argc));
 
         settings.verboseBuild = true;
 

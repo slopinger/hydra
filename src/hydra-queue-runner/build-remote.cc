@@ -14,9 +14,10 @@
 #include "serve-protocol.hh"
 #include "serve-protocol-impl.hh"
 #include "ssh.hh"
-#include "temporary-dir.hh"
 #include "finally.hh"
 #include "url.hh"
+
+#include "temporary-dir.hh"
 
 using namespace nix;
 

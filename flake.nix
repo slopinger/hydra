@@ -6,7 +6,7 @@
   inputs.lix.url = "git+https://git.lix.systems/lix-project/lix";
   inputs.lix.inputs.nixpkgs.follows = "nixpkgs";
 
-  inputs.nix-eval-jobs.url = "git+https://git.lix.systems/lix-project/nix-eval-jobs";
+  inputs.nix-eval-jobs.url = "git+https://git.lix.systems/ma27/nix-eval-jobs?ref=update-lix";
   inputs.nix-eval-jobs.inputs.nixpkgs.follows = "nixpkgs";
   inputs.nix-eval-jobs.inputs.lix.follows = "lix";
 

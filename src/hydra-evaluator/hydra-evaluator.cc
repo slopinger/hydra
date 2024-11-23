@@ -513,14 +513,14 @@ int main(int argc, char * * argv)
 
         std::vector<std::string> args;
 
-        parseCmdLine(argc, argv, [&](Strings::iterator & arg, const Strings::iterator & end) {
+        LegacyArgs(argv[0], [&](Strings::iterator & arg, const Strings::iterator & end) {
             if (*arg == "--unlock")
                 unlock = true;
             else if (arg->starts_with("-"))
                 return false;
             args.push_back(*arg);
             return true;
-        });
+        }).parseCmdline(Strings(argv + 1, argv + argc));
 
 
         if (unlock)
