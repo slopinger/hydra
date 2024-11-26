@@ -2,8 +2,8 @@
 
 #include <pqxx/pqxx>
 
-#include "strings.hh"
-#include "environment-variables.hh"
+#include "lix/libutil/environment-variables.hh"
+#include "lix/libutil/strings.hh"
 
 
 struct Connection : pqxx::connection

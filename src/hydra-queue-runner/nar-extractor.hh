@@ -1,9 +1,9 @@
 #pragma once
 
-#include "fs-accessor.hh"
-#include "types.hh"
-#include "serialise.hh"
-#include "hash.hh"
+#include "lix/libstore/fs-accessor.hh"
+#include "lix/libutil/hash.hh"
+#include "lix/libutil/serialise.hh"
+#include "lix/libutil/types.hh"
 
 struct NarMemberData
 {

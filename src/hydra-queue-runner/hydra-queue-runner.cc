@@ -11,16 +11,16 @@
 
 #include <nlohmann/json.hpp>
 
-#include "signals.hh"
-#include "state.hh"
 #include "hydra-build-result.hh"
-#include "store-api.hh"
+#include "lix/libstore/store-api.hh"
+#include "lix/libutil/signals.hh"
+#include "state.hh"
 
-#include "args.hh"
-#include "globals.hh"
 #include "hydra-config.hh"
-#include "s3-binary-cache-store.hh"
-#include "shared.hh"
+#include "lix/libmain/shared.hh"
+#include "lix/libstore/globals.hh"
+#include "lix/libstore/s3-binary-cache-store.hh"
+#include "lix/libutil/args.hh"
 
 using namespace nix;
 using nlohmann::json;

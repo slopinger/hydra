@@ -1,7 +1,7 @@
 #include "hydra-build-result.hh"
-#include "store-api.hh"
-#include "fs-accessor.hh"
-#include "strings.hh"
+#include "lix/libstore/fs-accessor.hh"
+#include "lix/libstore/store-api.hh"
+#include "lix/libutil/strings.hh"
 
 #include <regex>
 

@@ -1,10 +1,10 @@
 #include <cmath>
 
-#include "error.hh"
-#include "state.hh"
 #include "hydra-build-result.hh"
-#include "finally.hh"
-#include "binary-cache-store.hh"
+#include "lix/libstore/binary-cache-store.hh"
+#include "lix/libutil/error.hh"
+#include "lix/libutil/finally.hh"
+#include "state.hh"
 
 using namespace nix;
 

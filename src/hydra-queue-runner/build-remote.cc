@@ -6,18 +6,17 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 
-#include "build-result.hh"
-#include "current-process.hh"
-#include "path.hh"
-#include "serve-protocol.hh"
+#include "lix/libstore/build-result.hh"
+#include "lix/libstore/path.hh"
+#include "lix/libstore/serve-protocol-impl.hh"
+#include "lix/libstore/serve-protocol.hh"
+#include "lix/libstore/ssh.hh"
+#include "lix/libutil/current-process.hh"
+#include "lix/libutil/finally.hh"
+#include "lix/libutil/url.hh"
 #include "state.hh"
-#include "serve-protocol.hh"
-#include "serve-protocol-impl.hh"
-#include "ssh.hh"
-#include "finally.hh"
-#include "url.hh"
 
-#include "temporary-dir.hh"
+#include "lix/libstore/temporary-dir.hh"
 
 using namespace nix;
 
