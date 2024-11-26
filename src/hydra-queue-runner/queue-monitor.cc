@@ -411,7 +411,7 @@ std::map<DrvOutput, std::optional<StorePath>> State::getMissingRemotePaths(
     const std::map<DrvOutput, std::optional<StorePath>> & paths)
 {
     Sync<std::map<DrvOutput, std::optional<StorePath>>> missing_;
-    ThreadPool tp;
+    ThreadPool tp("hydra-getMissingRemotePaths");
 
     for (auto & [output, maybeOutputPath] : paths) {
         if (!maybeOutputPath) {
