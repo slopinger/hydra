@@ -16,15 +16,15 @@
 
 #include "db.hh"
 
-#include "parsed-derivations.hh"
-#include "pathlocks.hh"
-#include "pool.hh"
-#include "build-result.hh"
-#include "store-api.hh"
-#include "sync.hh"
+#include "lix/libstore/build-result.hh"
+#include "lix/libstore/machines.hh"
+#include "lix/libstore/parsed-derivations.hh"
+#include "lix/libstore/pathlocks.hh"
+#include "lix/libstore/serve-protocol.hh"
+#include "lix/libstore/store-api.hh"
+#include "lix/libutil/pool.hh"
+#include "lix/libutil/sync.hh"
 #include "nar-extractor.hh"
-#include "serve-protocol.hh"
-#include "machines.hh"
 
 
 using BuildID = unsigned int;

@@ -1,9 +1,9 @@
 #include "db.hh"
 #include "hydra-config.hh"
-#include "logging.hh"
-#include "pool.hh"
-#include "shared.hh"
-#include "signals.hh"
+#include "lix/libmain/shared.hh"
+#include "lix/libutil/logging.hh"
+#include "lix/libutil/pool.hh"
+#include "lix/libutil/signals.hh"
 
 #include <algorithm>
 #include <thread>

@@ -2,9 +2,9 @@
 
 #include <map>
 
-#include "environment-variables.hh"
-#include "file-system.hh"
-#include "strings.hh"
+#include "lix/libutil/environment-variables.hh"
+#include "lix/libutil/file-system.hh"
+#include "lix/libutil/strings.hh"
 
 struct HydraConfig
 {

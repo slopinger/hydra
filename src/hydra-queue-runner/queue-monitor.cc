@@ -1,7 +1,7 @@
-#include "state.hh"
 #include "hydra-build-result.hh"
-#include "globals.hh"
-#include "thread-pool.hh"
+#include "lix/libstore/globals.hh"
+#include "lix/libutil/thread-pool.hh"
+#include "state.hh"
 
 #include <cstring>
 #include <utility>

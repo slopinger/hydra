@@ -1,6 +1,6 @@
 #include "nar-extractor.hh"
 
-#include "archive.hh"
+#include "lix/libutil/archive.hh"
 
 #include <unordered_set>
 #include <utility>

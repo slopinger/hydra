@@ -2,9 +2,9 @@
 
 #include <memory>
 
-#include "hash.hh"
-#include "derivations.hh"
-#include "store-api.hh"
+#include "lix/libstore/derivations.hh"
+#include "lix/libstore/store-api.hh"
+#include "lix/libutil/hash.hh"
 #include "nar-extractor.hh"
 
 struct BuildProduct
