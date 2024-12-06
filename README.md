@@ -4,6 +4,17 @@
 
 Hydra is a [Continuous Integration](https://en.wikipedia.org/wiki/Continuous_integration) service for [Nix](https://nixos.org/nix) based projects.
 
+## Branches
+
+| Branch | Lix release | Maintained |
+| --- | --- | --- |
+| `main` | [`main` branch of Lix](https://git.lix.systems/lix-project/lix/commits/branch/main) | ✅ |
+| `lix-2.91` | [2.91](https://lix.systems/blog/2024-08-12-lix-2.91-release/) | ✅ |
+
+Active development happens on `main` only.
+Branches that track a Lix release are maintained as long as the Lix version is
+maintained. These only receive critical bugfixes.
+
 ## Installation And Setup
 
 **Note**: The instructions provided below are intended to enable new users to get a simple, local installation up and running. They are by no means sufficient for running a production server, let alone a public instance.
