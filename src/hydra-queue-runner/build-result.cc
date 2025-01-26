@@ -35,7 +35,7 @@ BuildOutput getBuildOutput(
         auto outputS = store->printStorePath(output);
         if (!narMembers.count(outputS)) {
             printInfo("fetching NAR contents of '%s'...", outputS);
-            GeneratorSource source{store->narFromPath(output)};
+            auto source = store->narFromPath(output);
             extractNarData(source, outputS, narMembers);
         }
     }

@@ -75,11 +75,11 @@ struct Extractor : NARParseVisitor
 
 
 void extractNarData(
-    Source & source,
+    box_ptr<Source> & source,
     const Path & prefix,
     NarMemberDatas & members)
 {
-    auto parser = extractNarDataFilter(source, prefix, members);
+    auto parser = extractNarDataFilter(*source, prefix, members);
     while (parser.next()) {
         // ignore raw data
     }

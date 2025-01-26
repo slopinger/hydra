@@ -74,11 +74,11 @@
         "treefmt-nix": "treefmt-nix"
       },
       "locked": {
-        "lastModified": 1737237917,
-        "narHash": "sha256-xd3/Wr4aPc2MY61qyQ6qQ8AGoG3H/DDcJWziP4EhhXY=",
+        "lastModified": 1738008985,
+        "narHash": "sha256-EYmllgk4J7jZPfyf9ps7JWJFiNv9wLncpND23d+7dVo=",
         "ref": "refs/heads/main",
-        "rev": "6482bee40b89ab2c28d2e988848aa9ae0429d78c",
-        "revCount": 621,
+        "rev": "e489d2190a9e7b6a369d3457b49ba80c93f80eae",
+        "revCount": 623,
         "type": "git",
         "url": "https://git.lix.systems/lix-project/nix-eval-jobs"
       },

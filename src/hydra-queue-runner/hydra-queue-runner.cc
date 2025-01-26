@@ -21,6 +21,7 @@
 #include "lix/libstore/globals.hh"
 #include "lix/libstore/s3-binary-cache-store.hh"
 #include "lix/libutil/args.hh"
+#include "lix/libutil/async.hh"
 
 using namespace nix;
 using nlohmann::json;
@@ -974,7 +975,8 @@ int main(int argc, char * * argv)
         BuildID buildOne = 0;
         std::optional<std::string> metricsAddrOpt = std::nullopt;
 
-        LegacyArgs(argv[0], [&](Strings::iterator & arg, const Strings::iterator & end) {
+        nix::AsyncIoRoot aio;
+        LegacyArgs(aio, argv[0], [&](Strings::iterator & arg, const Strings::iterator & end) {
             if (*arg == "--unlock")
                 unlock = true;
             else if (*arg == "--status")
