@@ -1,5 +1,6 @@
 #include "hydra-build-result.hh"
 #include "lix/libstore/globals.hh"
+#include "lix/libutil/async.hh"
 #include "lix/libutil/thread-pool.hh"
 #include "state.hh"
 
@@ -40,13 +41,15 @@ void State::queueMonitorLoop(Connection & conn)
 
     auto destStore = getDestStore();
 
+    AsyncIoRoot aio;
+
     bool quit = false;
     while (!quit) {
         auto t_before_work = std::chrono::steady_clock::now();
 
         localStore->clearPathInfoCache();
 
-        bool done = getQueuedBuilds(conn, destStore);
+        bool done = getQueuedBuilds(aio, conn, destStore);
 
         if (buildOne && buildOneDone) quit = true;
 
@@ -93,7 +96,7 @@ struct PreviousFailure : public std::exception {
 };
 
 
-bool State::getQueuedBuilds(Connection & conn,
+bool State::getQueuedBuilds(AsyncIoRoot & aio, Connection & conn,
     ref<Store> destStore)
 {
     prom.queue_checks_started.Increment();
@@ -176,7 +179,7 @@ bool State::getQueuedBuilds(Connection & conn,
 
         /* Create steps for this derivation and its dependencies. */
         try {
-            step = createStep(destStore, conn, build, build->drvPath,
+            step = createStep(aio, destStore, conn, build, build->drvPath,
                 build, nullptr, finishedDrvs, newSteps, newRunnable);
         } catch (PreviousFailure & ex) {
 
@@ -434,7 +437,7 @@ std::map<DrvOutput, std::optional<StorePath>> State::getMissingRemotePaths(
 }
 
 
-Step::ptr State::createStep(ref<Store> destStore,
+Step::ptr State::createStep(AsyncIoRoot & aio, ref<Store> destStore,
     Connection & conn, Build::ptr build, const StorePath & drvPath,
     Build::ptr referringBuild, Step::ptr referringStep, std::set<StorePath> & finishedDrvs,
     std::set<Step::ptr> & newSteps, std::set<Step::ptr> & newRunnable)
@@ -571,7 +574,7 @@ Step::ptr State::createStep(ref<Store> destStore,
                         printInfo("substituting output ‘%1%’ of ‘%2%’",
                             localStore->printStorePath(path),
                             localStore->printStorePath(drvPath));
-                        localStore->ensurePath(path);
+                        aio.blockOn(localStore->ensurePath(path));
                         // FIXME: should copy directly from substituter to destStore.
                     }
 
@@ -611,7 +614,7 @@ Step::ptr State::createStep(ref<Store> destStore,
 
     /* Create steps for the dependencies. */
     for (auto & i : step->drv->inputDrvs.map) {
-        auto dep = createStep(destStore, conn, build, i.first, nullptr, step, finishedDrvs, newSteps, newRunnable);
+        auto dep = createStep(aio, destStore, conn, build, i.first, nullptr, step, finishedDrvs, newSteps, newRunnable);
         if (dep) {
             auto step_(step->state.lock());
             step_->deps.insert(dep);
