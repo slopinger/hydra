@@ -48,11 +48,11 @@
         "pre-commit-hooks": "pre-commit-hooks"
       },
       "locked": {
-        "lastModified": 1737238254,
-        "narHash": "sha256-GoOwW81pV5T0YhD3yuLZG0+/Qr/Ld4qC71eM0mD3pJA=",
+        "lastModified": 1738053421,
+        "narHash": "sha256-B9HigdAgTs/FxUVcGYIRIxJVPQ+vGp3/G6WRuVKIGds=",
         "ref": "refs/heads/main",
-        "rev": "4cacb5412fedc9f37bc7a502540374f774d923cf",
-        "revCount": 16633,
+        "rev": "f8a592713d14bf0374950c8d3575eb3795e63987",
+        "revCount": 16698,
         "type": "git",
         "url": "https://git.lix.systems/lix-project/lix"
       },
@@ -74,11 +74,11 @@
         "treefmt-nix": "treefmt-nix"
       },
       "locked": {
-        "lastModified": 1737237917,
-        "narHash": "sha256-xd3/Wr4aPc2MY61qyQ6qQ8AGoG3H/DDcJWziP4EhhXY=",
+        "lastModified": 1738008985,
+        "narHash": "sha256-EYmllgk4J7jZPfyf9ps7JWJFiNv9wLncpND23d+7dVo=",
         "ref": "refs/heads/main",
-        "rev": "6482bee40b89ab2c28d2e988848aa9ae0429d78c",
-        "revCount": 621,
+        "rev": "e489d2190a9e7b6a369d3457b49ba80c93f80eae",
+        "revCount": 623,
         "type": "git",
         "url": "https://git.lix.systems/lix-project/nix-eval-jobs"
       },
@@ -126,11 +126,11 @@
     },
     "nixpkgs": {
       "locked": {
-        "lastModified": 1737165118,
-        "narHash": "sha256-s40Kk/OulP3J/1JvC3VT16U4r/Xw6Qdi7SRw3LYkPWs=",
+        "lastModified": 1737672001,
+        "narHash": "sha256-YnHJJ19wqmibLQdUeq9xzE6CjrMA568KN/lFPuSVs4I=",
         "owner": "NixOS",
         "repo": "nixpkgs",
-        "rev": "6a3ae7a5a12fb8cac2d59d7df7cbd95f9b2f0566",
+        "rev": "035f8c0853c2977b24ffc4d0a42c74f00b182cd8",
         "type": "github"
       },
       "original": {

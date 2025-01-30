@@ -177,6 +177,7 @@ stdenv.mkDerivation (finalAttrs: {
     boost
     nlohmann_json
     prometheus-cpp
+    nix.passthru.capnproto-lix
   ];
 
   nativeCheckInputs = [

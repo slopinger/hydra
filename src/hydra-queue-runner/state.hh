@@ -22,6 +22,7 @@
 #include "lix/libstore/pathlocks.hh"
 #include "lix/libstore/serve-protocol.hh"
 #include "lix/libstore/store-api.hh"
+#include "lix/libutil/async.hh"
 #include "lix/libutil/pool.hh"
 #include "lix/libutil/sync.hh"
 #include "nar-extractor.hh"
@@ -541,7 +542,7 @@ private:
     void queueMonitorLoop(Connection & conn);
 
     /* Check the queue for new builds. */
-    bool getQueuedBuilds(Connection & conn, nix::ref<nix::Store> destStore);
+    bool getQueuedBuilds(nix::AsyncIoRoot & aio, Connection & conn, nix::ref<nix::Store> destStore);
 
     /* Handle cancellation, deletion and priority bumps. */
     void processQueueChange(Connection & conn);
@@ -555,7 +556,7 @@ private:
         nix::ref<nix::Store> destStore,
         const std::map<nix::DrvOutput, std::optional<nix::StorePath>> & paths);
 
-    Step::ptr createStep(nix::ref<nix::Store> store,
+    Step::ptr createStep(nix::AsyncIoRoot & aio, nix::ref<nix::Store> store,
         Connection & conn, Build::ptr build, const nix::StorePath & drvPath,
         Build::ptr referringBuild, Step::ptr referringStep, std::set<nix::StorePath> & finishedDrvs,
         std::set<Step::ptr> & newSteps, std::set<Step::ptr> & newRunnable);

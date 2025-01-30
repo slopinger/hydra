@@ -4,6 +4,7 @@
 #include "lix/libutil/logging.hh"
 #include "lix/libutil/pool.hh"
 #include "lix/libutil/signals.hh"
+#include "lix/libutil/async.hh"
 
 #include <algorithm>
 #include <thread>
@@ -513,7 +514,8 @@ int main(int argc, char * * argv)
 
         std::vector<std::string> args;
 
-        LegacyArgs(argv[0], [&](Strings::iterator & arg, const Strings::iterator & end) {
+        nix::AsyncIoRoot aio;
+        LegacyArgs(aio, argv[0], [&](Strings::iterator & arg, const Strings::iterator & end) {
             if (*arg == "--unlock")
                 unlock = true;
             else if (arg->starts_with("-"))
