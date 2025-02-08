@@ -26,6 +26,7 @@
         hydra = final.callPackage ./package.nix {
           inherit (final.lib) fileset;
           rawSrc = self;
+          stdenv = final.clangStdenv;
         };
       };
 
@@ -79,8 +80,7 @@
             lib.optional (stdenv.cc.isClang && stdenv.hostPlatform == stdenv.buildPlatform) pkgs.clang-tools;
         };
       in {
-        default = mkDevShell pkgs.stdenv;
-        clang = mkDevShell pkgs.clangStdenv;
+        default = mkDevShell pkgs.clangStdenv;
       });
 
       nixosModules = import ./nixos-modules {
