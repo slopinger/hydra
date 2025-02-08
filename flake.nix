@@ -6,11 +6,7 @@
   inputs.lix.url = "git+https://git.lix.systems/lix-project/lix";
   inputs.lix.inputs.nixpkgs.follows = "nixpkgs";
 
-  inputs.nix-eval-jobs.url = "git+https://git.lix.systems/lix-project/nix-eval-jobs";
-  inputs.nix-eval-jobs.inputs.nixpkgs.follows = "nixpkgs";
-  inputs.nix-eval-jobs.inputs.lix.follows = "lix";
-
-  outputs = { self, nix-eval-jobs, nixpkgs, lix }:
+  outputs = { self, nixpkgs, lix }:
     let
       systems = [ "x86_64-linux" "aarch64-linux" ];
       forEachSystem = nixpkgs.lib.genAttrs systems;
@@ -29,7 +25,6 @@
       overlays.default = final: prev: {
         hydra = final.callPackage ./package.nix {
           inherit (final.lib) fileset;
-          nix-eval-jobs = nix-eval-jobs.packages.${final.system}.default;
           rawSrc = self;
         };
       };
