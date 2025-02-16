@@ -596,7 +596,7 @@ std::shared_ptr<PathLocks> State::acquireGlobalLock()
     createDirs(dirOf(lockPath));
 
     auto lock = std::make_shared<PathLocks>();
-    if (!lock->lockPaths(PathSet({lockPath}), "", false)) return nullptr;
+    if (!lock->tryLockPaths(PathSet({lockPath}))) return nullptr;
 
     return lock;
 }
