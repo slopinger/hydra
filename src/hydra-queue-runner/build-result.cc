@@ -9,6 +9,7 @@ using namespace nix;
 
 
 BuildOutput getBuildOutput(
+    AsyncIoRoot & aio,
     nix::ref<Store> store,
     NarMemberDatas & narMembers,
     const OutputPathMap derivationOutputs)
@@ -19,7 +20,7 @@ BuildOutput getBuildOutput(
     StorePathSet outputs;
     StorePathSet closure;
     for (auto& [outputName, outputPath] : derivationOutputs) {
-        store->computeFSClosure(outputPath, closure);
+        aio.blockOn(store->computeFSClosure(outputPath, closure));
         outputs.insert(outputPath);
         res.outputs.insert({outputName, outputPath});
     }

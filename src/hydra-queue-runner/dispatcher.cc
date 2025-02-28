@@ -34,6 +34,8 @@ void State::dispatcher()
     printMsg(lvlDebug, "Waiting for the machines parsing to have completed at least once");
     machinesReadyLock.lock();
 
+    AsyncIoRoot aio;
+
     while (true) {
         try {
             printMsg(lvlDebug, "dispatcher woken up");
@@ -41,7 +43,7 @@ void State::dispatcher()
 
             auto t_before_work = std::chrono::steady_clock::now();
 
-            auto sleepUntil = doDispatch();
+            auto sleepUntil = doDispatch(aio);
 
             auto t_after_work = std::chrono::steady_clock::now();
 
@@ -76,7 +78,7 @@ void State::dispatcher()
 }
 
 
-system_time State::doDispatch()
+system_time State::doDispatch(AsyncIoRoot & aio)
 {
     /* Prune old historical build step info from the jobsets. */
     {
@@ -321,7 +323,7 @@ system_time State::doDispatch()
 
     } while (keepGoing);
 
-    abortUnsupported();
+    abortUnsupported(aio);
 
     return sleepUntil;
 }
@@ -337,7 +339,7 @@ void State::wakeDispatcher()
 }
 
 
-void State::abortUnsupported()
+void State::abortUnsupported(AsyncIoRoot & aio)
 {
     /* Make a copy of 'runnable' and 'machines' so we don't block them
        very long. */
@@ -397,6 +399,7 @@ void State::abortUnsupported()
             bool stepFinished = false;
 
             failStep(
+                aio,
                 *conn, step, build->id,
                 RemoteResult {
                     .stepStatus = bsUnsupported,

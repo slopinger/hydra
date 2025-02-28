@@ -42,6 +42,7 @@ struct BuildOutput
 };
 
 BuildOutput getBuildOutput(
+    nix::AsyncIoRoot & aio,
     nix::ref<nix::Store> store,
     NarMemberDatas & narMembers,
     const nix::OutputPathMap derivationOutputs);

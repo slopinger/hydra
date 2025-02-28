@@ -1,4 +1,5 @@
 #include <iostream>
+#include <lix/libstore/pathlocks.hh>
 #include <thread>
 #include <optional>
 #include <type_traits>
@@ -20,7 +21,6 @@
 #include "lix/libmain/shared.hh"
 #include "lix/libstore/globals.hh"
 #include "lix/libstore/s3-binary-cache-store.hh"
-#include "lix/libutil/args.hh"
 #include "lix/libutil/async.hh"
 
 using namespace nix;
@@ -333,7 +333,7 @@ unsigned int State::allocBuildStep(pqxx::work & txn, BuildID buildId)
 }
 
 
-unsigned int State::createBuildStep(pqxx::work & txn, time_t startTime, BuildID buildId, Step::ptr step,
+unsigned int State::createBuildStep(AsyncIoRoot & aio, pqxx::work & txn, time_t startTime, BuildID buildId, Step::ptr step,
     const std::string & machine, BuildStatus status, const std::string & errorMsg, BuildID propagatedFrom)
 {
  restart:
@@ -356,7 +356,7 @@ unsigned int State::createBuildStep(pqxx::work & txn, time_t startTime, BuildID 
 
     if (r.affected_rows() == 0) goto restart;
 
-    for (auto & [name, output] : getDestStore()->queryPartialDerivationOutputMap(step->drvPath, &*localStore))
+    for (auto & [name, output] : aio.blockOn(getDestStore()->queryPartialDerivationOutputMap(step->drvPath, &*localStore)))
         txn.exec_params0
             ("insert into BuildStepOutputs (build, stepnr, name, path) values ($1, $2, $3, $4)",
             buildId, stepNr, name,
@@ -382,7 +382,7 @@ void State::updateBuildStep(pqxx::work & txn, BuildID buildId, unsigned int step
 }
 
 
-void State::finishBuildStep(pqxx::work & txn, const RemoteResult & result,
+void State::finishBuildStep(AsyncIoRoot & aio, pqxx::work & txn, const RemoteResult & result,
     BuildID buildId, unsigned int stepNr, const std::string & machine)
 {
     assert(result.startTime);
@@ -406,7 +406,7 @@ void State::finishBuildStep(pqxx::work & txn, const RemoteResult & result,
         assert(res.size());
         StorePath drvPath = localStore->parseStorePath(res[0].as<std::string>());
         // If we've finished building, all the paths should be known
-        for (auto & [name, output] : getDestStore()->queryDerivationOutputMap(drvPath, &*localStore))
+        for (auto & [name, output] : aio.blockOn(getDestStore()->queryDerivationOutputMap(drvPath, &*localStore)))
             txn.exec_params0
                 ("update BuildStepOutputs set path = $4 where build = $1 and stepnr = $2 and name = $3",
                   buildId, stepNr, name, localStore->printStorePath(output));
@@ -589,16 +589,13 @@ void State::notifyBuildFinished(pqxx::work & txn, BuildID buildId,
 }
 
 
-std::shared_ptr<PathLocks> State::acquireGlobalLock()
+std::optional<PathLock> State::acquireGlobalLock()
 {
     Path lockPath = hydraData + "/queue-runner/lock";
 
     createDirs(dirOf(lockPath));
 
-    auto lock = std::make_shared<PathLocks>();
-    if (!lock->tryLockPaths(PathSet({lockPath}))) return nullptr;
-
-    return lock;
+    return nix::tryLockPath(lockPath);
 }
 
 
@@ -846,7 +843,7 @@ void State::unlock()
 }
 
 
-void State::run(BuildID buildOne)
+void State::run(AsyncIoRoot & aio, BuildID buildOne)
 {
     /* Can't be bothered to shut down cleanly. Goodbye! */
     auto callback = createInterruptCallback([&]() { std::_Exit(0); });
@@ -873,10 +870,10 @@ void State::run(BuildID buildOne)
     StoreConfig::Params localParams;
     localParams["max-connections"] = "16";
     localParams["max-connection-age"] = "600";
-    localStore = openStore(getEnv("NIX_REMOTE").value_or(""), localParams);
+    localStore = aio.blockOn(openStore(getEnv("NIX_REMOTE").value_or(""), localParams));
 
     auto storeUri = config->getStrOption("store_uri");
-    _destStore = storeUri == "" ? localStore : openStore(storeUri);
+    _destStore = storeUri == "" ? localStore : aio.blockOn(openStore(storeUri));
 
     useSubstitutes = config->getBoolOption("use-substitutes", false);
 
@@ -975,6 +972,7 @@ int main(int argc, char * * argv)
         BuildID buildOne = 0;
         std::optional<std::string> metricsAddrOpt = std::nullopt;
 
+        // By definition the `aio` for the main thread.
         nix::AsyncIoRoot aio;
         LegacyArgs(aio, argv[0], [&](Strings::iterator & arg, const Strings::iterator & end) {
             if (*arg == "--unlock")
@@ -1001,6 +999,6 @@ int main(int argc, char * * argv)
         else if (unlock)
             state.unlock();
         else
-            state.run(buildOne);
+            state.run(aio, buildOne);
     });
 }
