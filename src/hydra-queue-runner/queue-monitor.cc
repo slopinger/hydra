@@ -13,10 +13,11 @@ using namespace nix;
 
 void State::queueMonitor()
 {
+    AsyncIoRoot aio;
     while (true) {
-        auto conn(dbPool.get());
+        auto conn(aio.blockOn(dbPool.get()));
         try {
-            queueMonitorLoop(*conn);
+            queueMonitorLoop(aio, *conn);
         } catch (pqxx::broken_connection & e) {
             printMsg(lvlError, "queue monitor: %s", e.what());
             printMsg(lvlError, "queue monitor: Reconnecting in 10s");
@@ -30,7 +31,7 @@ void State::queueMonitor()
 }
 
 
-void State::queueMonitorLoop(Connection & conn)
+void State::queueMonitorLoop(AsyncIoRoot & aio, Connection & conn)
 {
     receiver buildsAdded(conn, "builds_added");
     receiver buildsRestarted(conn, "builds_restarted");
@@ -41,13 +42,11 @@ void State::queueMonitorLoop(Connection & conn)
 
     auto destStore = getDestStore();
 
-    AsyncIoRoot aio;
-
     bool quit = false;
     while (!quit) {
         auto t_before_work = std::chrono::steady_clock::now();
 
-        localStore->clearPathInfoCache();
+        localStore->clearPathInfoCache().wait(aio.kj.waitScope);
 
         bool done = getQueuedBuilds(aio, conn, destStore);
 
@@ -156,7 +155,7 @@ bool State::getQueuedBuilds(AsyncIoRoot & aio, Connection & conn,
         nrAdded++;
         newBuildsByID.erase(build->id);
 
-        if (!localStore->isValidPath(build->drvPath)) {
+        if (!aio.blockOn(localStore->isValidPath(build->drvPath))) {
             /* Derivation has been GC'ed prematurely. */
             printError("aborting GC'ed build %1%", build->id);
             if (!build->finishedInDB) {
@@ -421,8 +420,8 @@ std::map<DrvOutput, std::optional<StorePath>> State::getMissingRemotePaths(
             auto missing(missing_.lock());
             missing->insert({output, maybeOutputPath});
         } else {
-            tp.enqueue([&] {
-                if (!destStore->isValidPath(*maybeOutputPath)) {
+            tp.enqueueWithAio([&](AsyncIoRoot & aio) {
+                if (!aio.blockOn(destStore->isValidPath(*maybeOutputPath))) {
                     auto missing(missing_.lock());
                     missing->insert({output, maybeOutputPath});
                 }
@@ -494,7 +493,7 @@ Step::ptr State::createStep(AsyncIoRoot & aio, ref<Store> destStore,
        ‘steps’ before this point, but that doesn't matter because
        it's not runnable yet, and other threads won't make it
        runnable while step->created == false. */
-    step->drv = std::make_unique<Derivation>(localStore->readDerivation(drvPath));
+    step->drv = std::make_unique<Derivation>(aio.blockOn(localStore->readDerivation(drvPath)));
     step->parsedDrv = std::make_unique<ParsedDerivation>(drvPath, *step->drv);
 
     step->preferLocalBuild = step->parsedDrv->willBuildLocally(*localStore);
@@ -516,7 +515,7 @@ Step::ptr State::createStep(AsyncIoRoot & aio, ref<Store> destStore,
         throw PreviousFailure{step};
 
     /* Are all outputs valid? */
-    auto outputHashes = staticOutputHashes(*localStore, *(step->drv));
+    auto outputHashes = aio.blockOn(staticOutputHashes(*localStore, *(step->drv)));
     std::map<DrvOutput, std::optional<StorePath>> paths;
     for (auto & [outputName, maybeOutputPath] : aio.blockOn(destStore->queryPartialDerivationOutputMap(drvPath, &*localStore))) {
         auto outputHash = outputHashes.at(outputName);
@@ -535,7 +534,7 @@ Step::ptr State::createStep(AsyncIoRoot & aio, ref<Store> destStore,
             // If we don't know the output path from the destination
             // store, see if the local store can tell us.
             if (/* localStore != destStore && */ !pathOpt && experimentalFeatureSettings.isEnabled(Xp::CaDerivations))
-                if (auto maybeRealisation = localStore->queryRealisation(i))
+                if (auto maybeRealisation = aio.blockOn(localStore->queryRealisation(i)))
                     pathOpt = maybeRealisation->outPath;
 
             if (!pathOpt) {
@@ -545,7 +544,7 @@ Step::ptr State::createStep(AsyncIoRoot & aio, ref<Store> destStore,
             }
             auto & path = *pathOpt;
 
-            if (/* localStore != destStore && */ localStore->isValidPath(path))
+            if (/* localStore != destStore && */ aio.blockOn(localStore->isValidPath(path)))
                 avail++;
             else if (useSubstitutes) {
                 SubstitutablePathInfos infos;
@@ -566,7 +565,7 @@ Step::ptr State::createStep(AsyncIoRoot & aio, ref<Store> destStore,
                 try {
                     time_t startTime = time(nullptr);
 
-                    if (localStore->isValidPath(path))
+                    if (aio.blockOn(localStore->isValidPath(path)))
                         printInfo("copying output ‘%1%’ of ‘%2%’ from local store",
                             localStore->printStorePath(path),
                             localStore->printStorePath(drvPath));

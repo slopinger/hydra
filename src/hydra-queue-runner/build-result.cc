@@ -25,7 +25,7 @@ BuildOutput getBuildOutput(
         res.outputs.insert({outputName, outputPath});
     }
     for (auto & path : closure) {
-        auto info = store->queryPathInfo(path);
+        auto info = aio.blockOn(store->queryPathInfo(path));
         res.closureSize += info->narSize;
         if (outputs.count(path)) res.size += info->narSize;
     }
@@ -36,7 +36,7 @@ BuildOutput getBuildOutput(
         auto outputS = store->printStorePath(output);
         if (!narMembers.count(outputS)) {
             printInfo("fetching NAR contents of '%s'...", outputS);
-            auto source = store->narFromPath(output);
+            auto source = aio.blockOn(store->narFromPath(output));
             extractNarData(source, outputS, narMembers);
         }
     }

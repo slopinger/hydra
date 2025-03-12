@@ -286,6 +286,7 @@ static BasicDerivation sendInputs(
 }
 
 static BuildResult performBuild(
+    AsyncIoRoot & aio,
     ::Machine::Connection & conn,
     Store & localStore,
     StorePath drvPath,
@@ -337,7 +338,7 @@ static BuildResult performBuild(
         DerivationOutputsAndOptPaths drvOutputs = drv.outputsAndOptPaths(localStore);
         // Since this a `BasicDerivation`, `staticOutputHashes` will not
         // do any real work.
-        auto outputHashes = staticOutputHashes(localStore, drv);
+        auto outputHashes = aio.blockOn(staticOutputHashes(localStore, drv));
         for (auto & [outputName, output] : drvOutputs) {
             auto outputPath = output.second;
             // We’ve just asserted that the output paths of the derivation
@@ -606,6 +607,7 @@ void State::buildRemote(AsyncIoRoot & aio,
         updateStep(ssBuilding);
 
         BuildResult buildResult = build_remote::performBuild(
+            aio,
             conn,
             *localStore,
             step->drvPath,
@@ -679,16 +681,16 @@ void State::buildRemote(AsyncIoRoot & aio,
 
         /* Register the outputs of the newly built drv */
         if (experimentalFeatureSettings.isEnabled(Xp::CaDerivations)) {
-            auto outputHashes = staticOutputHashes(*localStore, *step->drv);
+            auto outputHashes = aio.blockOn(staticOutputHashes(*localStore, *step->drv));
             for (auto & [outputName, realisation] : buildResult.builtOutputs) {
                 // Register the resolved drv output
-                destStore->registerDrvOutput(realisation);
+                aio.blockOn(destStore->registerDrvOutput(realisation));
 
                 // Also register the unresolved one
                 auto unresolvedRealisation = realisation;
                 unresolvedRealisation.signatures.clear();
                 unresolvedRealisation.id.drvHash = outputHashes.at(outputName);
-                destStore->registerDrvOutput(unresolvedRealisation);
+                aio.blockOn(destStore->registerDrvOutput(unresolvedRealisation));
             }
         }
 

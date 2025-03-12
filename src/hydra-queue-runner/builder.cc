@@ -38,7 +38,7 @@ void State::builder(MachineReservation::ptr reservation)
             activeSteps_.lock()->erase(activeStep);
         });
 
-        auto conn(dbPool.get());
+        auto conn(aio.blockOn(dbPool.get()));
 
         try {
             auto destStore = getDestStore();

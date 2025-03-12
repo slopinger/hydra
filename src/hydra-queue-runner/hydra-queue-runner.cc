@@ -599,7 +599,7 @@ std::optional<PathLock> State::acquireGlobalLock()
 }
 
 
-void State::dumpStatus(Connection & conn)
+void State::dumpStatus(Connection & conn, AsyncIoRoot & aio)
 {
     time_t now = time(nullptr);
     json statusJson = {
@@ -715,21 +715,21 @@ void State::dumpStatus(Connection & conn)
 
         auto store = getDestStore();
 
-        auto & stats = store->getStats();
+        auto stats = aio.blockOn(store->getStats());
         statusJson["store"] = {
-            {"narInfoRead", stats.narInfoRead.load()},
-            {"narInfoReadAverted", stats.narInfoReadAverted.load()},
-            {"narInfoMissing", stats.narInfoMissing.load()},
-            {"narInfoWrite", stats.narInfoWrite.load()},
-            {"narInfoCacheSize", stats.pathInfoCacheSize.load()},
-            {"narRead", stats.narRead.load()},
-            {"narReadBytes", stats.narReadBytes.load()},
-            {"narReadCompressedBytes", stats.narReadCompressedBytes.load()},
-            {"narWrite", stats.narWrite.load()},
-            {"narWriteAverted", stats.narWriteAverted.load()},
-            {"narWriteBytes", stats.narWriteBytes.load()},
-            {"narWriteCompressedBytes", stats.narWriteCompressedBytes.load()},
-            {"narWriteCompressionTimeMs", stats.narWriteCompressionTimeMs.load()},
+            {"narInfoRead", stats.narInfoRead},
+            {"narInfoReadAverted", stats.narInfoReadAverted},
+            {"narInfoMissing", stats.narInfoMissing},
+            {"narInfoWrite", stats.narInfoWrite},
+            {"narInfoCacheSize", stats.pathInfoCacheSize},
+            {"narRead", stats.narRead},
+            {"narReadBytes", stats.narReadBytes},
+            {"narReadCompressedBytes", stats.narReadCompressedBytes},
+            {"narWrite", stats.narWrite},
+            {"narWriteAverted", stats.narWriteAverted},
+            {"narWriteBytes", stats.narWriteBytes},
+            {"narWriteCompressedBytes", stats.narWriteCompressedBytes},
+            {"narWriteCompressionTimeMs", stats.narWriteCompressionTimeMs},
             {"narCompressionSavings",
              stats.narWriteBytes
              ? 1.0 - (double) stats.narWriteCompressedBytes / (double) stats.narWriteBytes
@@ -779,9 +779,9 @@ void State::dumpStatus(Connection & conn)
 }
 
 
-void State::showStatus()
+void State::showStatus(AsyncIoRoot & aio)
 {
-    auto conn(dbPool.get());
+    auto conn(aio.blockOn(dbPool.get()));
     receiver statusDumped(*conn, "status_dumped");
 
     std::string status;
@@ -825,13 +825,13 @@ void State::showStatus()
 }
 
 
-void State::unlock()
+void State::unlock(AsyncIoRoot & aio)
 {
     auto lock = acquireGlobalLock();
     if (!lock)
         throw Error("hydra-queue-runner is currently running");
 
-    auto conn(dbPool.get());
+    auto conn(aio.blockOn(dbPool.get()));
 
     clearBusy(*conn, 0);
 
@@ -885,9 +885,9 @@ void State::run(AsyncIoRoot & aio, BuildID buildOne)
     }
 
     {
-        auto conn(dbPool.get());
+        auto conn(aio.blockOn(dbPool.get()));
         clearBusy(*conn, 0);
-        dumpStatus(*conn);
+        dumpStatus(*conn, aio);
     }
 
     machinesReadyLock.lock();
@@ -899,6 +899,7 @@ void State::run(AsyncIoRoot & aio, BuildID buildOne)
 
     /* Periodically clean up orphaned busy steps in the database. */
     std::thread([&]() {
+        AsyncIoRoot aio;
         while (true) {
             sleep(180);
 
@@ -911,7 +912,7 @@ void State::run(AsyncIoRoot & aio, BuildID buildOne)
             }
 
             try {
-                auto conn(dbPool.get());
+                auto conn(aio.blockOn(dbPool.get()));
                 pqxx::work txn(*conn);
                 for (auto & step : steps) {
                     printMsg(lvlError, "cleaning orphaned step %d of build %d", step.second, step.first);
@@ -934,12 +935,12 @@ void State::run(AsyncIoRoot & aio, BuildID buildOne)
        ‘hydra-queue-runner --status’). */
     while (true) {
         try {
-            auto conn(dbPool.get());
+            auto conn(aio.blockOn(dbPool.get()));
             try {
                 receiver dumpStatus_(*conn, "dump_status");
                 while (true) {
                     conn->await_notification();
-                    dumpStatus(*conn);
+                    dumpStatus(*conn, aio);
                 }
             } catch (pqxx::broken_connection & connEx) {
                 printMsg(lvlError, "main thread: %s", connEx.what());
@@ -995,9 +996,9 @@ int main(int argc, char * * argv)
 
         State state{metricsAddrOpt};
         if (status)
-            state.showStatus();
+            state.showStatus(aio);
         else if (unlock)
-            state.unlock();
+            state.unlock(aio);
         else
             state.run(aio, buildOne);
     });
