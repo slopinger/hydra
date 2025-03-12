@@ -523,13 +523,13 @@ private:
 
     unsigned int allocBuildStep(pqxx::work & txn, BuildID buildId);
 
-    unsigned int createBuildStep(pqxx::work & txn, time_t startTime, BuildID buildId, Step::ptr step,
+    unsigned int createBuildStep(nix::AsyncIoRoot & aio, pqxx::work & txn, time_t startTime, BuildID buildId, Step::ptr step,
         const std::string & machine, BuildStatus status, const std::string & errorMsg = "",
         BuildID propagatedFrom = 0);
 
     void updateBuildStep(pqxx::work & txn, BuildID buildId, unsigned int stepNr, StepState stepState);
 
-    void finishBuildStep(pqxx::work & txn, const RemoteResult & result, BuildID buildId, unsigned int stepNr,
+    void finishBuildStep(nix::AsyncIoRoot & aio, pqxx::work & txn, const RemoteResult & result, BuildID buildId, unsigned int stepNr,
         const std::string & machine);
 
     unsigned int createSubstitutionStep(pqxx::work & txn, time_t startTime, time_t stopTime,
@@ -547,7 +547,7 @@ private:
     /* Handle cancellation, deletion and priority bumps. */
     void processQueueChange(Connection & conn);
 
-    BuildOutput getBuildOutputCached(Connection & conn, nix::ref<nix::Store> destStore,
+    BuildOutput getBuildOutputCached(nix::AsyncIoRoot & aio, Connection & conn, nix::ref<nix::Store> destStore,
         const nix::StorePath & drvPath);
 
     /* Returns paths missing from the remote store. Paths are processed in
@@ -562,6 +562,7 @@ private:
         std::set<Step::ptr> & newSteps, std::set<Step::ptr> & newRunnable);
 
     void failStep(
+        nix::AsyncIoRoot & aio,
         Connection & conn,
         Step::ptr step,
         BuildID buildId,
@@ -579,23 +580,25 @@ private:
     /* The thread that selects and starts runnable builds. */
     void dispatcher();
 
-    system_time doDispatch();
+    system_time doDispatch(nix::AsyncIoRoot & aio);
 
     void wakeDispatcher();
 
-    void abortUnsupported();
+    void abortUnsupported(nix::AsyncIoRoot & aio);
 
     void builder(MachineReservation::ptr reservation);
 
     /* Perform the given build step. Return true if the step is to be
        retried. */
     enum StepResult { sDone, sRetry, sMaybeCancelled };
-    StepResult doBuildStep(nix::ref<nix::Store> destStore,
+    StepResult doBuildStep(nix::AsyncIoRoot & aio,
+        nix::ref<nix::Store> destStore,
         MachineReservation::ptr & reservation,
         Connection & conn,
         std::shared_ptr<ActiveStep> activeStep);
 
-    void buildRemote(nix::ref<nix::Store> destStore,
+    void buildRemote(nix::AsyncIoRoot & aio,
+        nix::ref<nix::Store> destStore,
         MachineReservation::ptr & reservation,
         Machine::ptr machine, Step::ptr step,
         const BuildOptions & buildOptions,
@@ -615,7 +618,7 @@ private:
 
     /* Acquire the global queue runner lock, or null if somebody else
        has it. */
-    std::shared_ptr<nix::PathLocks> acquireGlobalLock();
+    std::optional<nix::PathLock> acquireGlobalLock();
 
     void dumpStatus(Connection & conn);
 
@@ -627,5 +630,5 @@ public:
 
     void unlock();
 
-    void run(BuildID buildOne = 0);
+    void run(nix::AsyncIoRoot & aio, BuildID buildOne = 0);
 };

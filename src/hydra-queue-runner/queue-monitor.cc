@@ -202,7 +202,7 @@ bool State::getQueuedBuilds(AsyncIoRoot & aio, Connection & conn,
                 if (!res[0].is_null()) propagatedFrom = res[0].as<BuildID>();
 
                 if (!propagatedFrom) {
-                    for (auto & [outputName, optOutputPath] : destStore->queryPartialDerivationOutputMap(ex.step->drvPath, &*localStore)) {
+                    for (auto & [outputName, optOutputPath] : aio.blockOn(destStore->queryPartialDerivationOutputMap(ex.step->drvPath, &*localStore))) {
                         constexpr std::string_view common = "select max(s.build) from BuildSteps s join BuildStepOutputs o on s.build = o.build where startTime != 0 and stopTime != 0 and status = 1";
                         auto res = optOutputPath
                             ? txn.exec_params(
@@ -219,7 +219,7 @@ bool State::getQueuedBuilds(AsyncIoRoot & aio, Connection & conn,
                     }
                 }
 
-                createBuildStep(txn, 0, build->id, ex.step, "", bsCachedFailure, "", propagatedFrom);
+                createBuildStep(aio, txn, 0, build->id, ex.step, "", bsCachedFailure, "", propagatedFrom);
                 txn.exec_params
                     ("update Builds set finished = 1, buildStatus = $2, startTime = $3, stopTime = $3, isCachedBuild = 1, notificationPendingSince = $3 "
                      "where id = $1 and finished = 0",
@@ -250,9 +250,9 @@ bool State::getQueuedBuilds(AsyncIoRoot & aio, Connection & conn,
         /* If we didn't get a step, it means the step's outputs are
            all valid. So we mark this as a finished, cached build. */
         if (!step) {
-            BuildOutput res = getBuildOutputCached(conn, destStore, build->drvPath);
+            BuildOutput res = getBuildOutputCached(aio, conn, destStore, build->drvPath);
 
-            for (auto & i : destStore->queryDerivationOutputMap(build->drvPath, &*localStore))
+            for (auto & i : aio.blockOn(destStore->queryDerivationOutputMap(build->drvPath, &*localStore)))
                 addRoot(i.second);
 
             {
@@ -518,7 +518,7 @@ Step::ptr State::createStep(AsyncIoRoot & aio, ref<Store> destStore,
     /* Are all outputs valid? */
     auto outputHashes = staticOutputHashes(*localStore, *(step->drv));
     std::map<DrvOutput, std::optional<StorePath>> paths;
-    for (auto & [outputName, maybeOutputPath] : destStore->queryPartialDerivationOutputMap(drvPath, &*localStore)) {
+    for (auto & [outputName, maybeOutputPath] : aio.blockOn(destStore->queryPartialDerivationOutputMap(drvPath, &*localStore))) {
         auto outputHash = outputHashes.at(outputName);
         paths.insert({{.drvHash=outputHash, .outputName=outputName}, maybeOutputPath});
     }
@@ -549,7 +549,7 @@ Step::ptr State::createStep(AsyncIoRoot & aio, ref<Store> destStore,
                 avail++;
             else if (useSubstitutes) {
                 SubstitutablePathInfos infos;
-                localStore->querySubstitutablePathInfos({{path, {}}}, infos);
+                aio.blockOn(localStore->querySubstitutablePathInfos({{path, {}}}, infos));
                 if (infos.size() == 1)
                     avail++;
             }
@@ -578,9 +578,9 @@ Step::ptr State::createStep(AsyncIoRoot & aio, ref<Store> destStore,
                         // FIXME: should copy directly from substituter to destStore.
                     }
 
-                    copyClosure(*localStore, *destStore,
+                    aio.blockOn(copyClosure(*localStore, *destStore,
                         StorePathSet { path },
-                        NoRepair, CheckSigs, NoSubstitute);
+                        NoRepair, CheckSigs, NoSubstitute));
 
                     time_t stopTime = time(nullptr);
 
@@ -692,9 +692,9 @@ void State::processJobsetSharesChange(Connection & conn)
 }
 
 
-BuildOutput State::getBuildOutputCached(Connection & conn, nix::ref<nix::Store> destStore, const nix::StorePath & drvPath)
+BuildOutput State::getBuildOutputCached(nix::AsyncIoRoot & aio, Connection & conn, nix::ref<nix::Store> destStore, const nix::StorePath & drvPath)
 {
-    auto derivationOutputs = destStore->queryDerivationOutputMap(drvPath, &*localStore);
+    auto derivationOutputs = aio.blockOn(destStore->queryDerivationOutputMap(drvPath, &*localStore));
 
     {
     pqxx::work txn(conn);
@@ -758,5 +758,5 @@ BuildOutput State::getBuildOutputCached(Connection & conn, nix::ref<nix::Store> 
     }
 
     NarMemberDatas narMembers;
-    return getBuildOutput(destStore, narMembers, derivationOutputs);
+    return getBuildOutput(aio, destStore, narMembers, derivationOutputs);
 }

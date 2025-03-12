@@ -19,6 +19,8 @@ void setThreadName(const std::string & name)
 
 void State::builder(MachineReservation::ptr reservation)
 {
+    AsyncIoRoot aio;
+
     setThreadName("bld~" + std::string(reservation->step->drvPath.to_string()));
 
     StepResult res = sRetry;
@@ -41,7 +43,7 @@ void State::builder(MachineReservation::ptr reservation)
         try {
             auto destStore = getDestStore();
             // Might release the reservation.
-            res = doBuildStep(destStore, reservation, *conn, activeStep);
+            res = doBuildStep(aio, destStore, reservation, *conn, activeStep);
         } catch (pqxx::broken_connection & e) {
             printMsg(lvlError, "db lost while building ‘%s’ on ‘%s’: %s (retriable)",
                 localStore->printStorePath(activeStep->step->drvPath),
@@ -83,7 +85,8 @@ void State::builder(MachineReservation::ptr reservation)
 }
 
 
-State::StepResult State::doBuildStep(nix::ref<Store> destStore,
+State::StepResult State::doBuildStep(AsyncIoRoot & aio,
+    nix::ref<Store> destStore,
     MachineReservation::ptr & reservation,
     Connection & conn,
     std::shared_ptr<ActiveStep> activeStep)
@@ -204,7 +207,7 @@ State::StepResult State::doBuildStep(nix::ref<Store> destStore,
         {
             auto mc = startDbUpdate();
             pqxx::work txn(conn);
-            stepNr = createBuildStep(txn, result.startTime, buildId, step, machine->sshName, bsBusy);
+            stepNr = createBuildStep(aio, txn, result.startTime, buildId, step, machine->sshName, bsBusy);
             txn.commit();
         }
 
@@ -219,7 +222,7 @@ State::StepResult State::doBuildStep(nix::ref<Store> destStore,
 
         try {
             /* FIXME: referring builds may have conflicting timeouts. */
-            buildRemote(destStore, reservation, machine, step, buildOptions, result, activeStep, updateStep, narMembers);
+            buildRemote(aio, destStore, reservation, machine, step, buildOptions, result, activeStep, updateStep, narMembers);
         } catch (Error & e) {
             if (activeStep->state_.lock()->cancelled) {
                 printInfo("marking step %d of build %d as cancelled", stepNr, buildId);
@@ -234,7 +237,7 @@ State::StepResult State::doBuildStep(nix::ref<Store> destStore,
 
         if (result.stepStatus == bsSuccess) {
             updateStep(ssPostProcessing);
-            res = getBuildOutput(destStore, narMembers, destStore->queryDerivationOutputMap(step->drvPath, &*localStore));
+            res = getBuildOutput(aio, destStore, narMembers, aio.blockOn(destStore->queryDerivationOutputMap(step->drvPath, &*localStore)));
         }
     }
 
@@ -261,7 +264,7 @@ State::StepResult State::doBuildStep(nix::ref<Store> destStore,
     /* Finish the step in the database. */
     if (stepNr) {
         pqxx::work txn(conn);
-        finishBuildStep(txn, result, buildId, stepNr, machine->sshName);
+        finishBuildStep(aio, txn, result, buildId, stepNr, machine->sshName);
         txn.commit();
     }
 
@@ -288,7 +291,7 @@ State::StepResult State::doBuildStep(nix::ref<Store> destStore,
 
         assert(stepNr);
 
-        for (auto & [outputName, optOutputPath] : destStore->queryPartialDerivationOutputMap(step->drvPath, &*localStore)) {
+        for (auto & [outputName, optOutputPath] : aio.blockOn(destStore->queryPartialDerivationOutputMap(step->drvPath, &*localStore))) {
             if (!optOutputPath)
                 throw Error(
                     "Missing output %s for derivation %d which was supposed to have succeeded",
@@ -393,7 +396,7 @@ State::StepResult State::doBuildStep(nix::ref<Store> destStore,
         }
 
     } else
-        failStep(conn, step, buildId, result, machine, stepFinished);
+        failStep(aio, conn, step, buildId, result, machine, stepFinished);
 
     // FIXME: keep stats about aborted steps?
     nrStepsDone++;
@@ -410,6 +413,7 @@ State::StepResult State::doBuildStep(nix::ref<Store> destStore,
 
 
 void State::failStep(
+    AsyncIoRoot & aio,
     Connection & conn,
     Step::ptr step,
     BuildID buildId,
@@ -459,7 +463,7 @@ void State::failStep(
                     ((result.stepStatus != bsCachedFailure && result.stepStatus != bsUnsupported) && buildId == build->id) ||
                     build->finishedInDB)
                     continue;
-                createBuildStep(txn,
+                createBuildStep(aio, txn,
                     0, build->id, step, machine ? machine->sshName : "",
                     result.stepStatus, result.errorMsg, buildId == build->id ? 0 : buildId);
             }

@@ -11,6 +11,7 @@
 #include "lix/libstore/serve-protocol-impl.hh"
 #include "lix/libstore/serve-protocol.hh"
 #include "lix/libstore/ssh.hh"
+#include "lix/libutil/async.hh"
 #include "lix/libutil/current-process.hh"
 #include "lix/libutil/finally.hh"
 #include "lix/libutil/url.hh"
@@ -113,10 +114,11 @@ static void copyClosureTo(
     ::Machine::Connection & conn,
     Store & destStore,
     const StorePathSet & paths,
+    AsyncIoRoot & aio,
     SubstituteFlag useSubstitutes = NoSubstitute)
 {
     StorePathSet closure;
-    destStore.computeFSClosure(paths, closure);
+    aio.blockOn(destStore.computeFSClosure(paths, closure));
 
     /* Send the "query valid paths" command with the "lock" option
        enabled. This prevents a race where the remote host
@@ -133,7 +135,7 @@ static void copyClosureTo(
 
     if (present.size() == closure.size()) return;
 
-    auto sorted = destStore.topoSortPaths(closure);
+    auto sorted = aio.blockOn(destStore.topoSortPaths(closure));
 
     StorePathSet missing;
     for (auto & i : std::ranges::reverse_view(sorted))
@@ -145,7 +147,7 @@ static void copyClosureTo(
         std::chrono::seconds(600));
 
     conn.to << ServeProto::Command::ImportPaths;
-    destStore.exportPaths(missing, conn.to);
+    aio.blockOn(destStore.exportPaths(missing, conn.to));
     conn.to.flush();
 
     if (readInt(conn.from) != 1)
@@ -218,6 +220,7 @@ static void handshake(::Machine::Connection & conn, unsigned int repeats)
 }
 
 static BasicDerivation sendInputs(
+    AsyncIoRoot & aio,
     State & state,
     Step & step,
     Store & localStore,
@@ -236,7 +239,7 @@ static BasicDerivation sendInputs(
        to do that, however, but we would not use it here.)
      */
     BasicDerivation basicDrv = ({
-        auto maybeBasicDrv = step.drv->tryResolve(destStore, &localStore);
+        auto maybeBasicDrv = aio.blockOn(step.drv->tryResolve(destStore, &localStore));
         if (!maybeBasicDrv)
             throw Error(
                 "the derivation '%s' can’t be resolved. It’s probably "
@@ -250,9 +253,9 @@ static BasicDerivation sendInputs(
        this will copy the inputs to the binary cache from the local
        store. */
     if (&localStore != &destStore) {
-        copyClosure(localStore, destStore,
+        aio.blockOn(copyClosure(localStore, destStore,
             step.drv->inputSrcs,
-            NoRepair, NoCheckSigs, NoSubstitute);
+            NoRepair, NoCheckSigs, NoSubstitute));
     }
 
     {
@@ -268,10 +271,10 @@ static BasicDerivation sendInputs(
         /* Copy the input closure. */
         if (conn.machine->isLocalhost()) {
             StorePathSet closure;
-            destStore.computeFSClosure(basicDrv.inputSrcs, closure);
-            copyPaths(destStore, localStore, closure, NoRepair, NoCheckSigs, NoSubstitute);
+            aio.blockOn(destStore.computeFSClosure(basicDrv.inputSrcs, closure));
+            aio.blockOn(copyPaths(destStore, localStore, closure, NoRepair, NoCheckSigs, NoSubstitute));
         } else {
-            copyClosureTo(conn, destStore, basicDrv.inputSrcs, Substitute);
+            copyClosureTo(conn, destStore, basicDrv.inputSrcs, aio, Substitute);
         }
 
         auto now2 = std::chrono::steady_clock::now();
@@ -394,7 +397,8 @@ static void copyPathFromRemote(
     NarMemberDatas & narMembers,
     Store & localStore,
     Store & destStore,
-    const ValidPathInfo & info
+    const ValidPathInfo & info,
+    AsyncIoRoot & aio
 )
 {
       /* Receive the NAR from the remote and add it to the
@@ -413,9 +417,9 @@ static void copyPathFromRemote(
 
           co_yield extractNarDataFilter(conn.from, localStore.printStorePath(info.path), narMembers);
       };
-      GeneratorSource source2{coro()};
+      AsyncGeneratorInputStream inputStream{coro()};
 
-      destStore.addToStore(info, source2, NoRepair, NoCheckSigs);
+      aio.blockOn(destStore.addToStore(info, inputStream, NoRepair, NoCheckSigs));
 }
 
 static void copyPathsFromRemote(
@@ -423,14 +427,15 @@ static void copyPathsFromRemote(
     NarMemberDatas & narMembers,
     Store & localStore,
     Store & destStore,
-    const std::map<StorePath, ValidPathInfo> & infos
+    const std::map<StorePath, ValidPathInfo> & infos,
+    AsyncIoRoot & aio
 )
 {
       auto pathsSorted = reverseTopoSortPaths(infos);
 
       for (auto & path : pathsSorted) {
           auto & info = infos.find(path)->second;
-          copyPathFromRemote(conn, narMembers, localStore, destStore, info);
+          copyPathFromRemote(conn, narMembers, localStore, destStore, info, aio);
       }
 
 }
@@ -505,7 +510,8 @@ private:
     T* sem;
 };
 
-void State::buildRemote(ref<Store> destStore,
+void State::buildRemote(AsyncIoRoot & aio,
+    ref<Store> destStore,
     MachineReservation::ptr & reservation,
     ::Machine::ptr machine, Step::ptr step,
     const BuildOptions & buildOptions,
@@ -578,7 +584,7 @@ void State::buildRemote(ref<Store> destStore,
            copy the immediate sources of the derivation and the required
            outputs of the input derivations. */
         updateStep(ssSendingInputs);
-        BasicDerivation resolvedDrv = build_remote::sendInputs(*this, *step, *localStore, *destStore, conn, result.overhead, nrStepsWaiting, nrStepsCopyingTo);
+        BasicDerivation resolvedDrv = build_remote::sendInputs(aio, *this, *step, *localStore, *destStore, conn, result.overhead, nrStepsWaiting, nrStepsCopyingTo);
 
         logFileDel.cancel();
 
@@ -665,7 +671,7 @@ void State::buildRemote(ref<Store> destStore,
             printMsg(lvlDebug, "copying outputs of ‘%s’ from ‘%s’ (%d bytes)",
                 localStore->printStorePath(step->drvPath), machine->sshName, totalNarSize);
 
-            build_remote::copyPathsFromRemote(conn, narMembers, *localStore, *destStore, infos);
+            build_remote::copyPathsFromRemote(conn, narMembers, *localStore, *destStore, infos, aio);
             auto now2 = std::chrono::steady_clock::now();
 
             result.overhead += std::chrono::duration_cast<std::chrono::milliseconds>(now2 - now1).count();
