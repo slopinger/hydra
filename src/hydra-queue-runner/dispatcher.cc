@@ -378,7 +378,7 @@ void State::abortUnsupported(AsyncIoRoot & aio)
 
             aborted.insert(step);
 
-            auto conn(dbPool.get());
+            auto conn(aio.blockOn(dbPool.get()));
 
             std::set<Build::ptr> dependents;
             std::set<Step::ptr> steps;

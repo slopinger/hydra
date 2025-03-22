@@ -79,48 +79,162 @@ enum class EvaluationStyle
     ONE_AT_A_TIME = 3,
 };
 
-struct Evaluator
+struct Jobset
 {
-    std::unique_ptr<HydraConfig> config;
+    JobsetId name;
+    std::optional<EvaluationStyle> evaluation_style;
+    time_t lastCheckedTime, triggerTime;
+    time_t checkInterval;
+    Pid pid;
+};
 
-    nix::Pool<Connection> dbPool;
+using Jobsets = std::map<JobsetId, Jobset>;
 
-    struct Jobset
-    {
-        JobsetId name;
-        std::optional<EvaluationStyle> evaluation_style;
-        time_t lastCheckedTime, triggerTime;
-        time_t checkInterval;
-        Pid pid;
-    };
+struct State
+{
+    size_t runningEvals = 0;
+    Jobsets jobsets;
+};
 
-    using Jobsets = std::map<JobsetId, Jobset>;
-
-    std::optional<JobsetName> evalOne;
-
-    const size_t maxEvals;
-
-    struct State
-    {
-        size_t runningEvals = 0;
-        Jobsets jobsets;
-    };
-
+struct EvaluatorState
+{
     Sync<State> state_;
 
     std::condition_variable childStarted;
     std::condition_variable maybeDoWork;
 
-    const time_t notTriggered = std::numeric_limits<time_t>::max();
+    std::optional<JobsetName> evalOne;
 
-    Evaluator()
-        : config(std::make_unique<HydraConfig>())
-        , maxEvals(std::max((size_t) 1, (size_t) config->getIntOption("max_concurrent_evals", 4)))
-    { }
+    const time_t notTriggered = std::numeric_limits<time_t>::max();
+};
+
+static void reaper(EvaluatorState & evalState, nix::Pool<Connection> & dbPool)
+{
+    AsyncIoRoot aio;
+
+    while (true) {
+        {
+            auto state(evalState.state_.lock());
+            while (!state->runningEvals)
+                state.wait(evalState.childStarted);
+        }
+
+        int status;
+        pid_t pid = waitpid(-1, &status, 0);
+        if (pid == -1) {
+            if (errno == EINTR) continue;
+            throw SysError("waiting for children");
+        }
+
+        {
+            auto state(evalState.state_.lock());
+            assert(state->runningEvals);
+            state->runningEvals--;
+
+            // FIXME: should use a map.
+            for (auto & i : state->jobsets) {
+                auto & jobset(i.second);
+
+                if (jobset.pid.get() == pid) {
+                    printInfo("evaluation of jobset ‘%s’ %s",
+                        jobset.name.display(), statusToString(status));
+
+                    auto now = time(nullptr);
+
+                    jobset.triggerTime = evalState.notTriggered;
+                    jobset.lastCheckedTime = now;
+
+                    try {
+
+                        auto conn(aio.blockOn(dbPool.get()));
+                        pqxx::work txn(*conn);
+
+                        /* Clear the trigger time to prevent this
+                           jobset from getting stuck in an endless
+                           failing eval loop. */
+                        txn.exec_params0
+                            ("update Jobsets set triggerTime = null where id = $1 and startTime is not null and triggerTime <= startTime",
+                             jobset.name.id);
+
+                        /* Clear the start time. */
+                        txn.exec_params0
+                            ("update Jobsets set startTime = null where id = $1",
+                             jobset.name.id);
+
+                        if (!WIFEXITED(status) || WEXITSTATUS(status) > 1) {
+                            txn.exec_params0
+                                ("update Jobsets set errorMsg = $1, lastCheckedTime = $2, errorTime = $2, fetchErrorMsg = null where id = $3",
+                                 fmt("evaluation %s", statusToString(status)),
+                                 now,
+                                 jobset.name.id);
+                        }
+
+                        txn.commit();
+
+                    } catch (std::exception & e) {
+                        printError("exception setting jobset error: %s", e.what());
+                    }
+
+                    jobset.pid.release();
+                    evalState.maybeDoWork.notify_one();
+
+                    if (evalState.evalOne) std::_Exit(0);
+
+                    break;
+                }
+            }
+        }
+    }
+}
+
+struct Monitor
+{
+    nix::Pool<Connection> & dbPool;
+    EvaluatorState & evalState;
+    nix::AsyncIoRoot & aio;
+
+    Monitor(nix::Pool<Connection> & dbPool, EvaluatorState & state, nix::AsyncIoRoot & aio)
+        : dbPool(dbPool)
+        , evalState(state)
+        , aio(aio)
+    {}
+
+    /* A thread that listens to PostgreSQL notifications about jobset
+       changes, updates the jobsets map, and signals the main thread
+       to start evaluations. */
+    void databaseMonitor()
+    {
+        while (true) {
+            try {
+                auto conn(aio.blockOn(dbPool.get()));
+
+                receiver jobsetsAdded(*conn, "jobsets_added");
+                receiver jobsetsDeleted(*conn, "jobsets_deleted");
+                receiver jobsetsChanged(*conn, "jobset_scheduling_changed");
+
+                while (true) {
+                    /* Note: we read/notify before
+                       await_notification() to ensure we don't miss a
+                       state change. */
+                    readJobsets();
+                    evalState.maybeDoWork.notify_one();
+                    conn->await_notification();
+                    printInfo("received jobset event");
+                }
+
+            } catch (pqxx::broken_connection & e) {
+                printError("Database connection broken: %s", e.what());
+                std::_Exit(1);
+            } catch (std::exception & e) {
+                printError("exception in database monitor thread: %s", e.what());
+                sleep(30);
+            }
+        }
+    }
 
     void readJobsets()
     {
-        auto conn(dbPool.get());
+        auto conn(aio.blockOn(dbPool.get()));
 
         pqxx::work txn(*conn);
 
@@ -131,20 +245,20 @@ struct Evaluator
              "where j.enabled != 0 and p.enabled != 0");
 
 
-        auto state(state_.lock());
+        auto state(evalState.state_.lock());
 
         std::set<JobsetId> seen;
 
         for (auto const & row : res) {
             auto name = JobsetId{row["project"].as<std::string>(), row["name"].as<std::string>(), row["id"].as<int>()};
 
-            if (evalOne && name != *evalOne) continue;
+            if (evalState.evalOne && name != *evalState.evalOne) continue;
 
             auto res = state->jobsets.try_emplace(name, Jobset{.name=name});
 
             auto & jobset = res.first->second;
             jobset.lastCheckedTime = row["lastCheckedTime"].as<time_t>(0);
-            jobset.triggerTime = row["triggerTime"].as<time_t>(notTriggered);
+            jobset.triggerTime = row["triggerTime"].as<time_t>(evalState.notTriggered);
             jobset.checkInterval = row["checkInterval"].as<time_t>();
 
             int eval_style = row["jobset_enabled"].as<int>(0);
@@ -166,7 +280,7 @@ struct Evaluator
             seen.insert(name);
         }
 
-        if (evalOne && seen.empty()) {
+        if (evalState.evalOne && seen.empty()) {
             printError("the specified jobset does not exist or is disabled");
             std::_Exit(1);
         }
@@ -179,6 +293,25 @@ struct Evaluator
                 i = state->jobsets.erase(i);
             }
     }
+};
+
+struct Evaluator
+{
+    std::unique_ptr<HydraConfig> config;
+    nix::Pool<Connection> & dbPool;
+    EvaluatorState & evalState;
+    nix::AsyncIoRoot & aio;
+    const size_t maxEvals;
+    const time_t notTriggered = std::numeric_limits<time_t>::max();
+
+    Evaluator(nix::Pool<Connection> & dbPool, EvaluatorState & evalState, nix::AsyncIoRoot & aio)
+        : config(std::make_unique<HydraConfig>())
+        , dbPool(dbPool)
+        , evalState(evalState)
+        , aio(aio)
+        , maxEvals(std::max((size_t) 1, (size_t) config->getIntOption("max_concurrent_evals", 4)))
+    { }
+
 
     void startEval(State & state, Jobset & jobset)
     {
@@ -189,7 +322,7 @@ struct Evaluator
             now - jobset.lastCheckedTime);
 
         {
-            auto conn(dbPool.get());
+            auto conn(aio.blockOn(dbPool.get()));
             pqxx::work txn(*conn);
             txn.exec_params0
                 ("update Jobsets set startTime = $1 where id = $2",
@@ -208,7 +341,7 @@ struct Evaluator
 
         state.runningEvals++;
 
-        childStarted.notify_one();
+        evalState.childStarted.notify_one();
     }
 
     bool shouldEvaluate(Jobset & jobset)
@@ -240,7 +373,7 @@ struct Evaluator
             // is a ONE_AT_A_TIME jobset, ensure the previous jobset
             // has no remaining, unfinished work.
 
-            auto conn(dbPool.get());
+            auto conn(aio.blockOn(dbPool.get()));
 
             pqxx::work txn(*conn);
 
@@ -302,7 +435,7 @@ struct Evaluator
         /* Filter out jobsets that have been evaluated recently and have
            not been triggered. */
         for (auto i = state.jobsets.begin(); i != state.jobsets.end(); ++i)
-            if (evalOne ||
+            if (evalState.evalOne ||
                 (i->second.evaluation_style && shouldEvaluate(i->second)))
                 sorted.push_back(i);
 
@@ -325,9 +458,9 @@ struct Evaluator
         }
     }
 
-    void loop()
+    void loop(AsyncIoRoot & aio)
     {
-        auto state(state_.lock());
+        auto state(evalState.state_.lock());
 
         while (true) {
 
@@ -345,149 +478,39 @@ struct Evaluator
 
             debug("waiting for %d s", sleepTime.count());
             if (sleepTime == std::chrono::seconds::max())
-                state.wait(maybeDoWork);
+                state.wait(evalState.maybeDoWork);
             else
-                state.wait_for(maybeDoWork, sleepTime);
+                state.wait_for(evalState.maybeDoWork, sleepTime);
 
             startEvals(*state);
         }
     }
 
-    /* A thread that listens to PostgreSQL notifications about jobset
-       changes, updates the jobsets map, and signals the main thread
-       to start evaluations. */
-    void databaseMonitor()
-    {
-        while (true) {
-
-            try {
-
-                auto conn(dbPool.get());
-
-                receiver jobsetsAdded(*conn, "jobsets_added");
-                receiver jobsetsDeleted(*conn, "jobsets_deleted");
-                receiver jobsetsChanged(*conn, "jobset_scheduling_changed");
-
-                while (true) {
-                    /* Note: we read/notify before
-                       await_notification() to ensure we don't miss a
-                       state change. */
-                    readJobsets();
-                    maybeDoWork.notify_one();
-                    conn->await_notification();
-                    printInfo("received jobset event");
-                }
-
-            } catch (pqxx::broken_connection & e) {
-                printError("Database connection broken: %s", e.what());
-                std::_Exit(1);
-            } catch (std::exception & e) {
-                printError("exception in database monitor thread: %s", e.what());
-                sleep(30);
-            }
-        }
-    }
-
-    /* A thread that reaps child processes.*/
-    void reaper()
-    {
-        while (true) {
-            {
-                auto state(state_.lock());
-                while (!state->runningEvals)
-                    state.wait(childStarted);
-            }
-
-            int status;
-            pid_t pid = waitpid(-1, &status, 0);
-            if (pid == -1) {
-                if (errno == EINTR) continue;
-                throw SysError("waiting for children");
-            }
-
-            {
-                auto state(state_.lock());
-                assert(state->runningEvals);
-                state->runningEvals--;
-
-                // FIXME: should use a map.
-                for (auto & i : state->jobsets) {
-                    auto & jobset(i.second);
-
-                    if (jobset.pid.get() == pid) {
-                        printInfo("evaluation of jobset ‘%s’ %s",
-                            jobset.name.display(), statusToString(status));
-
-                        auto now = time(nullptr);
-
-                        jobset.triggerTime = notTriggered;
-                        jobset.lastCheckedTime = now;
-
-                        try {
-
-                            auto conn(dbPool.get());
-                            pqxx::work txn(*conn);
-
-                            /* Clear the trigger time to prevent this
-                               jobset from getting stuck in an endless
-                               failing eval loop. */
-                            txn.exec_params0
-                                ("update Jobsets set triggerTime = null where id = $1 and startTime is not null and triggerTime <= startTime",
-                                 jobset.name.id);
-
-                            /* Clear the start time. */
-                            txn.exec_params0
-                                ("update Jobsets set startTime = null where id = $1",
-                                 jobset.name.id);
-
-                            if (!WIFEXITED(status) || WEXITSTATUS(status) > 1) {
-                                txn.exec_params0
-                                    ("update Jobsets set errorMsg = $1, lastCheckedTime = $2, errorTime = $2, fetchErrorMsg = null where id = $3",
-                                     fmt("evaluation %s", statusToString(status)),
-                                     now,
-                                     jobset.name.id);
-                            }
-
-                            txn.commit();
-
-                        } catch (std::exception & e) {
-                            printError("exception setting jobset error: %s", e.what());
-                        }
-
-                        jobset.pid.release();
-                        maybeDoWork.notify_one();
-
-                        if (evalOne) std::_Exit(0);
-
-                        break;
-                    }
-                }
-            }
-        }
-    }
-
     void unlock()
     {
-        auto conn(dbPool.get());
+        auto conn(aio.blockOn(dbPool.get()));
         pqxx::work txn(*conn);
         txn.exec("update Jobsets set startTime = null");
         txn.commit();
     }
 
-    void run()
+    void run(AsyncIoRoot & aio)
     {
         unlock();
 
         /* Can't be bothered to shut down cleanly. Goodbye! */
         auto callback = createInterruptCallback([&]() { std::_Exit(1); });
 
-        std::thread reaperThread([&]() { reaper(); });
-
-        std::thread monitorThread([&]() { databaseMonitor(); });
+        std::thread reaperThread([&]() { reaper(evalState, dbPool); });
+        std::thread monitorThread([&]() {
+            AsyncIoRoot aio;
+            Monitor monitor(dbPool, evalState, aio);
+            monitor.databaseMonitor();
+        });
 
         while (true) {
             try {
-                loop();
+                loop(aio);
             } catch (pqxx::broken_connection & e) {
                 printError("Database connection broken: %s", e.what());
                 std::_Exit(1);
@@ -510,8 +533,6 @@ int main(int argc, char * * argv)
 
         bool unlock = false;
 
-        Evaluator evaluator;
-
         std::vector<std::string> args;
 
         nix::AsyncIoRoot aio;
@@ -524,15 +545,18 @@ int main(int argc, char * * argv)
             return true;
         }).parseCmdline(Strings(argv + 1, argv + argc));
 
+        EvaluatorState evalState;
+        nix::Pool<Connection> dbPool;
+        Evaluator evaluator(dbPool, evalState, aio);
 
         if (unlock)
             evaluator.unlock();
         else {
             if (!args.empty()) {
                 if (args.size() != 2) throw UsageError("Syntax: hydra-evaluator [<project> <jobset>]");
-                evaluator.evalOne = JobsetName(args[0], args[1]);
+                evalState.evalOne = JobsetName(args[0], args[1]);
             }
-            evaluator.run();
+            evaluator.run(aio);
         }
     });
 }

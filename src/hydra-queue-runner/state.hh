@@ -539,7 +539,7 @@ private:
 
     void queueMonitor();
 
-    void queueMonitorLoop(Connection & conn);
+    void queueMonitorLoop(nix::AsyncIoRoot & aio, Connection & conn);
 
     /* Check the queue for new builds. */
     bool getQueuedBuilds(nix::AsyncIoRoot & aio, Connection & conn, nix::ref<nix::Store> destStore);
@@ -620,15 +620,15 @@ private:
        has it. */
     std::optional<nix::PathLock> acquireGlobalLock();
 
-    void dumpStatus(Connection & conn);
+    void dumpStatus(Connection & conn, nix::AsyncIoRoot & aio);
 
     void addRoot(const nix::StorePath & storePath);
 
 public:
 
-    void showStatus();
+    void showStatus(nix::AsyncIoRoot & aio);
 
-    void unlock();
+    void unlock(nix::AsyncIoRoot & aio);
 
     void run(nix::AsyncIoRoot & aio, BuildID buildOne = 0);
 };
