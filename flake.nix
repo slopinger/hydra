@@ -5,8 +5,11 @@
 
   inputs.lix.url = "git+https://git.lix.systems/lix-project/lix";
   inputs.lix.inputs.nixpkgs.follows = "nixpkgs";
+  inputs.lix.inputs.flake-compat.follows = "flake-compat";
 
-  outputs = { self, nixpkgs, lix }:
+  inputs.flake-compat.url = "github:nix-community/flake-compat";
+
+  outputs = { self, nixpkgs, lix, ... }:
     let
       systems = [ "x86_64-linux" "aarch64-linux" ];
       forEachSystem = nixpkgs.lib.genAttrs systems;
