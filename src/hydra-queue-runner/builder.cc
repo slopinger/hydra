@@ -183,7 +183,7 @@ State::StepResult State::doBuildStep(AsyncIoRoot & aio,
             /* Upload the log file to the binary cache. FIXME: should
                be done on a worker thread. */
             try {
-                auto store = destStore.dynamic_pointer_cast<BinaryCacheStore>();
+                auto store = destStore.try_cast_shared<BinaryCacheStore>();
                 if (uploadLogsToBinaryCache && store && pathExists(result.logFile)) {
                     store->upsertFile("log/" + std::string(step->drvPath.to_string()), readFile(result.logFile), "text/plain; charset=utf-8");
                     unlink(result.logFile.c_str());

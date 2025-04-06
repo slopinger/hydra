@@ -454,8 +454,8 @@ private:
 
     std::atomic<time_t> lastDispatcherCheck{0};
 
-    std::shared_ptr<nix::Store> localStore;
-    std::shared_ptr<nix::Store> _destStore;
+    nix::ref<nix::Store> localStore;
+    nix::ref<nix::Store> _destStore;
 
     size_t maxOutputSize;
     size_t maxLogSize;
@@ -499,7 +499,7 @@ private:
     PromMetrics prom;
 
 public:
-    State(std::optional<std::string> metricsAddrOpt);
+    State(std::optional<std::string> metricsAddrOpt, nix::AsyncIoRoot & aio);
 
     struct BuildOptions {
         unsigned int maxSilentTime, buildTimeout, repeats;
