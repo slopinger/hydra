@@ -654,7 +654,7 @@ void State::buildRemote(AsyncIoRoot & aio,
             outputs.insert(realisation.outPath);
 
         /* Copy the output paths. */
-        if (!machine->isLocalhost() || localStore != std::shared_ptr<Store>(destStore)) {
+        if (!machine->isLocalhost() || localStore != destStore) {
             updateStep(ssReceivingOutputs);
 
             MaintainCount<counter> mc(nrStepsCopyingFrom);

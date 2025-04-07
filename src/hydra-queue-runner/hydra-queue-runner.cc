@@ -102,11 +102,21 @@ State::PromMetrics::PromMetrics()
 
 }
 
-State::State(std::optional<std::string> metricsAddrOpt)
+State::State(std::optional<std::string> metricsAddrOpt, AsyncIoRoot & aio)
     : config(std::make_unique<HydraConfig>())
     , maxUnsupportedTime(config->getIntOption("max_unsupported_time", 0))
     , dbPool(config->getIntOption("max_db_connections", 128))
     , localWorkThrottler(static_cast<ptrdiff_t>(config->getIntOption("max_local_worker_threads", std::min(maxSupportedLocalWorkers, std::max(4u, std::thread::hardware_concurrency()) - 2))))
+    , localStore([&]() {
+        StoreConfig::Params localParams;
+        localParams["max-connections"] = "16";
+        localParams["max-connection-age"] = "600";
+        return aio.blockOn(openStore(getEnv("NIX_REMOTE").value_or(""), localParams));
+    }())
+    , _destStore([&](){
+        auto storeUri = config->getStrOption("store_uri");
+        return storeUri == "" ? ref<Store>{*localStore} : aio.blockOn(openStore(storeUri));
+    }())
     , maxOutputSize(config->getIntOption("max_output_size", 2ULL << 30))
     , maxLogSize(config->getIntOption("max_log_size", 64ULL << 20))
     , uploadLogsToBinaryCache(config->getBoolOption("upload_logs_to_binary_cache", false))
@@ -145,7 +155,7 @@ nix::MaintainCount<counter> State::startDbUpdate()
 
 ref<Store> State::getDestStore()
 {
-    return ref<Store>(_destStore);
+    return ref<Store>{*_destStore};
 }
 
 
@@ -866,14 +876,6 @@ void State::run(AsyncIoRoot & aio, BuildID buildOne)
         << metricsAddr << "/metrics (port " << exposerPort << ")"
         << std::endl;
 
-    StoreConfig::Params localParams;
-    localParams["max-connections"] = "16";
-    localParams["max-connection-age"] = "600";
-    localStore = aio.blockOn(openStore(getEnv("NIX_REMOTE").value_or(""), localParams));
-
-    auto storeUri = config->getStrOption("store_uri");
-    _destStore = storeUri == "" ? localStore : aio.blockOn(openStore(storeUri));
-
     useSubstitutes = config->getBoolOption("use-substitutes", false);
 
     // FIXME: hacky mechanism for configuring determinism checks.
@@ -993,7 +995,7 @@ int main(int argc, char * * argv)
 
         settings.verboseBuild = true;
 
-        State state{metricsAddrOpt};
+        State state{metricsAddrOpt, aio};
         if (status)
             state.showStatus(aio);
         else if (unlock)
