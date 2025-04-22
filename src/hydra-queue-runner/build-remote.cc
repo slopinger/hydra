@@ -50,7 +50,7 @@ static Strings extraStoreArgs(std::string & machine)
     return result;
 }
 
-static void openConnection(::Machine::ptr machine, Path tmpDir, int stderrFD, SSHMaster::Connection & child)
+static void openConnection(::Machine::ptr machine, Path tmpDir, int stderrFD, SSH::Connection & child)
 {
     std::string pgmName;
     Pipe to, from;
@@ -534,7 +534,7 @@ void State::buildRemote(AsyncIoRoot & aio,
         updateStep(ssConnecting);
 
         // FIXME: rewrite to use Store.
-        SSHMaster::Connection child;
+        SSH::Connection child;
         build_remote::openConnection(machine, tmpDir, logFD.get(), child);
 
         {
