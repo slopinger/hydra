@@ -612,7 +612,7 @@ Step::ptr State::createStep(AsyncIoRoot & aio, ref<Store> destStore,
     printMsg(lvlDebug, "creating build step ‘%1%’", localStore->printStorePath(drvPath));
 
     /* Create steps for the dependencies. */
-    for (auto & i : step->drv->inputDrvs.map) {
+    for (auto & i : step->drv->inputDrvs) {
         auto dep = createStep(aio, destStore, conn, build, i.first, nullptr, step, finishedDrvs, newSteps, newRunnable);
         if (dep) {
             auto step_(step->state.lock());
