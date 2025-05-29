@@ -10,7 +10,8 @@ Hydra is a [Continuous Integration](https://en.wikipedia.org/wiki/Continuous_int
 | --- | --- | --- |
 | `main` | [`main` branch of Lix](https://git.lix.systems/lix-project/lix/commits/branch/main) | ✅ |
 | `lix-2.91` | [2.91](https://lix.systems/blog/2024-08-12-lix-2.91-release/) | ✅ |
-| `lix-2.92` | [2.92](https://lix.systems/blog/2025-01-18-lix-2.92-release/) | ✅ |
+| `lix-2.92` | [2.92](https://lix.systems/blog/2025-01-18-lix-2.92-release/) | ❌ |
+| `lix-2.93` | [2.93](https://lix.systems/blog/2025-05-06-lix-2.93-release/) | ✅ |
 
 Active development happens on `main` only.
 Branches that track a Lix release are maintained as long as the Lix version is
