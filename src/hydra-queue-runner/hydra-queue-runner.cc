@@ -365,13 +365,10 @@ unsigned int State::createBuildStep(AsyncIoRoot & aio, pqxx::work & txn, time_t 
 
     if (r.affected_rows() == 0) goto restart;
 
-    for (auto & [name, output] : aio.blockOn(getDestStore()->queryPartialDerivationOutputMap(step->drvPath, &*localStore)))
+    for (auto & [name, output] : aio.blockOn(getDestStore()->queryDerivationOutputMap(step->drvPath, &*localStore)))
         txn.exec_params0
             ("insert into BuildStepOutputs (build, stepnr, name, path) values ($1, $2, $3, $4)",
-            buildId, stepNr, name,
-            output
-                ? std::optional { localStore->printStorePath(*output)}
-                : std::nullopt);
+            buildId, stepNr, name, localStore->printStorePath(output));
 
     if (status == bsBusy)
         txn.exec(fmt("notify step_started, '%d\t%d'", buildId, stepNr));
@@ -573,10 +570,9 @@ void State::markSucceededBuild(pqxx::work & txn, Build::ptr build,
 bool State::checkCachedFailure(Step::ptr step, Connection & conn)
 {
     pqxx::work txn(conn);
-    for (auto & i : step->drv->outputsAndOptPaths(*localStore))
-        if (i.second.second)
-            if (!txn.exec_params("select 1 from FailedPaths where path = $1", localStore->printStorePath(*i.second.second)).empty())
-                return true;
+    for (auto & i : step->drv->outputsAndPaths(*localStore))
+        if (!txn.exec_params("select 1 from FailedPaths where path = $1", localStore->printStorePath(i.second.second)).empty())
+            return true;
     return false;
 }
 

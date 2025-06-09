@@ -201,16 +201,11 @@ bool State::getQueuedBuilds(AsyncIoRoot & aio, Connection & conn,
                 if (!res[0].is_null()) propagatedFrom = res[0].as<BuildID>();
 
                 if (!propagatedFrom) {
-                    for (auto & [outputName, optOutputPath] : aio.blockOn(destStore->queryPartialDerivationOutputMap(ex.step->drvPath, &*localStore))) {
+                    for (auto & [outputName, outputPath] : aio.blockOn(destStore->queryDerivationOutputMap(ex.step->drvPath, &*localStore))) {
                         constexpr std::string_view common = "select max(s.build) from BuildSteps s join BuildStepOutputs o on s.build = o.build where startTime != 0 and stopTime != 0 and status = 1";
-                        auto res = optOutputPath
-                            ? txn.exec_params(
+                        auto res = txn.exec_params(
                                 std::string { common } + " and path = $1",
-                                localStore->printStorePath(*optOutputPath))
-                            : txn.exec_params(
-                                std::string { common } + " and drvPath = $1 and name = $2",
-                                localStore->printStorePath(ex.step->drvPath),
-                                outputName);
+                                localStore->printStorePath(outputPath));
                         if (!res[0][0].is_null()) {
                             propagatedFrom = res[0][0].as<BuildID>();
                             break;
@@ -517,9 +512,9 @@ Step::ptr State::createStep(AsyncIoRoot & aio, ref<Store> destStore,
     /* Are all outputs valid? */
     auto outputHashes = aio.blockOn(staticOutputHashes(*localStore, *(step->drv)));
     std::map<DrvOutput, std::optional<StorePath>> paths;
-    for (auto & [outputName, maybeOutputPath] : aio.blockOn(destStore->queryPartialDerivationOutputMap(drvPath, &*localStore))) {
+    for (auto & [outputName, outputPath] : aio.blockOn(destStore->queryDerivationOutputMap(drvPath, &*localStore))) {
         auto outputHash = outputHashes.at(outputName);
-        paths.insert({{.drvHash=outputHash, .outputName=outputName}, maybeOutputPath});
+        paths.insert({{.drvHash=outputHash, .outputName=outputName}, outputPath});
     }
 
     auto missing = getMissingRemotePaths(destStore, paths);
@@ -531,12 +526,6 @@ Step::ptr State::createStep(AsyncIoRoot & aio, ref<Store> destStore,
 
         size_t avail = 0;
         for (auto & [i, pathOpt] : missing) {
-            // If we don't know the output path from the destination
-            // store, see if the local store can tell us.
-            if (/* localStore != destStore && */ !pathOpt && experimentalFeatureSettings.isEnabled(Xp::CaDerivations))
-                if (auto maybeRealisation = aio.blockOn(localStore->queryRealisation(i)))
-                    pathOpt = maybeRealisation->outPath;
-
             if (!pathOpt) {
                 // No hope of getting the store object if we don't know
                 // the path.

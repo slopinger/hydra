@@ -291,12 +291,8 @@ State::StepResult State::doBuildStep(AsyncIoRoot & aio,
 
         assert(stepNr);
 
-        for (auto & [outputName, optOutputPath] : aio.blockOn(destStore->queryPartialDerivationOutputMap(step->drvPath, &*localStore))) {
-            if (!optOutputPath)
-                throw Error(
-                    "Missing output %s for derivation %d which was supposed to have succeeded",
-                    outputName, localStore->printStorePath(step->drvPath));
-            addRoot(*optOutputPath);
+        for (auto & [outputName, outputPath] : aio.blockOn(destStore->queryDerivationOutputMap(step->drvPath, &*localStore))) {
+            addRoot(outputPath);
         }
 
         /* Register success in the database for all Build objects that
@@ -485,9 +481,8 @@ void State::failStep(
             /* Remember failed paths in the database so that they
                won't be built again. */
             if (result.stepStatus != bsCachedFailure && result.canCache)
-                for (auto & i : step->drv->outputsAndOptPaths(*localStore))
-                    if (i.second.second)
-                       txn.exec_params0("insert into FailedPaths values ($1)", localStore->printStorePath(*i.second.second));
+                for (auto & i : step->drv->outputsAndPaths(*localStore))
+                   txn.exec_params0("insert into FailedPaths values ($1)", localStore->printStorePath(i.second.second));
 
             txn.commit();
         }
