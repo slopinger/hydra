@@ -26,6 +26,7 @@
 #include "lix/libutil/pool.hh"
 #include "lix/libutil/sync.hh"
 #include "nar-extractor.hh"
+#include "util.hh"
 
 
 using BuildID = unsigned int;
@@ -307,9 +308,10 @@ struct Machine : nix::Machine
 
     // A connection to a machine
     struct Connection {
-        nix::FdSource from;
+        CountingFdSource from;
         nix::FdSink to;
         nix::ServeProto::Version remoteVersion;
+        nix::Store & store;
 
         // Backpointer to the machine
         ptr machine;
@@ -318,6 +320,7 @@ struct Machine : nix::Machine
         {
             return {
                 .from = from,
+                .store = store,
                 .version = remoteVersion,
             };
         }
@@ -325,6 +328,7 @@ struct Machine : nix::Machine
         operator nix::ServeProto::WriteConn ()
         {
             return {
+                .store = store,
                 .version = remoteVersion,
             };
         }

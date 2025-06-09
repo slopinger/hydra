@@ -11,7 +11,7 @@ let
         nixosModules.hydraTest
       ];
 
-      virtualisation.memorySize = 1024;
+      virtualisation.memorySize = 1536;
       virtualisation.writableStore = true;
 
       environment.systemPackages = [ pkgs.perlPackages.LWP pkgs.perlPackages.JSON ];

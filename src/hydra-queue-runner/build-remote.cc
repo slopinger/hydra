@@ -126,12 +126,12 @@ static void copyClosureTo(
        the remote host to substitute missing paths. */
     // FIXME: substitute output pollutes our build log
     conn.to << ServeProto::Command::QueryValidPaths << 1 << useSubstitutes;
-    conn.to << ServeProto::write(destStore, conn, closure);
+    conn.to << ServeProto::write(conn, closure);
     conn.to.flush();
 
     /* Get back the set of paths that are already valid on the remote
        host. */
-    auto present = ServeProto::Serialise<StorePathSet>::read(destStore, conn);
+    auto present = ServeProto::Serialise<StorePathSet>::read(conn);
 
     if (present.size() == closure.size()) return;
 
@@ -225,28 +225,23 @@ static BasicDerivation sendInputs(
     Step & step,
     Store & localStore,
     Store & destStore,
-    ::Machine::Connection & conn,
+    ::Machine::Connection & localConn,
+    ::Machine::Connection & destConn,
     unsigned int & overhead,
     counter & nrStepsWaiting,
     counter & nrStepsCopyingTo
 )
 {
-    /* Replace the input derivations by their output paths to send a
-       minimal closure to the builder.
-
-       `tryResolve` currently does *not* rewrite input addresses, so it
-       is safe to do this in all cases. (It should probably have a mode
-       to do that, however, but we would not use it here.)
-     */
-    BasicDerivation basicDrv = ({
-        auto maybeBasicDrv = aio.blockOn(step.drv->tryResolve(destStore, &localStore));
-        if (!maybeBasicDrv)
-            throw Error(
-                "the derivation '%s' can’t be resolved. It’s probably "
-                "missing some outputs",
-                localStore.printStorePath(step.drvPath));
-        *maybeBasicDrv;
-    });
+    BasicDerivation basicDrv(*step.drv);
+    for (auto & input : step.drv->inputDrvs) {
+        auto drv2 = aio.blockOn(localStore.readDerivation(input.first));
+        for (auto & name : input.second) {
+            if (auto i = get(drv2.outputs, name)) {
+                auto outPath = i->path(localStore, drv2.name, name);
+                basicDrv.inputSrcs.insert(outPath);
+            }
+        }
+    }
 
     /* Ensure that the inputs exist in the destination store. This is
        a no-op for regular stores, but for the binary cache store,
@@ -264,17 +259,17 @@ static BasicDerivation sendInputs(
         MaintainCount<counter> mc2(nrStepsCopyingTo);
 
         printMsg(lvlDebug, "sending closure of ‘%s’ to ‘%s’",
-            localStore.printStorePath(step.drvPath), conn.machine->sshName);
+            localStore.printStorePath(step.drvPath), destConn.machine->sshName);
 
         auto now1 = std::chrono::steady_clock::now();
 
         /* Copy the input closure. */
-        if (conn.machine->isLocalhost()) {
+        if (destConn.machine->isLocalhost()) {
             StorePathSet closure;
             aio.blockOn(destStore.computeFSClosure(basicDrv.inputSrcs, closure));
             aio.blockOn(copyPaths(destStore, localStore, closure, NoRepair, NoCheckSigs, NoSubstitute));
         } else {
-            copyClosureTo(conn, destStore, basicDrv.inputSrcs, aio, Substitute);
+            copyClosureTo(destConn, destStore, basicDrv.inputSrcs, aio, Substitute);
         }
 
         auto now2 = std::chrono::steady_clock::now();
@@ -314,7 +309,7 @@ static BuildResult performBuild(
     startTime = time(nullptr);
     {
         MaintainCount<counter> mc(nrStepsBuilding);
-        result = ServeProto::Serialise<BuildResult>::read(localStore, conn);
+        result = ServeProto::Serialise<BuildResult>::read(conn);
     }
     stopTime = time(nullptr);
 
@@ -332,23 +327,16 @@ static BuildResult performBuild(
     // it manually by introspecting the derivation.
     if (GET_PROTOCOL_MINOR(conn.remoteVersion) < 6)
     {
-        // If the remote is too old to handle CA derivations, we can’t get this
-        // far anyways
-        assert(drv.type().hasKnownOutputPaths());
-        DerivationOutputsAndOptPaths drvOutputs = drv.outputsAndOptPaths(localStore);
+        DerivationOutputsAndPaths drvOutputs = drv.outputsAndPaths(localStore);
         // Since this a `BasicDerivation`, `staticOutputHashes` will not
         // do any real work.
         auto outputHashes = aio.blockOn(staticOutputHashes(localStore, drv));
         for (auto & [outputName, output] : drvOutputs) {
-            auto outputPath = output.second;
-            // We’ve just asserted that the output paths of the derivation
-            // were known
-            assert(outputPath);
             auto outputHash = outputHashes.at(outputName);
             auto drvOutput = DrvOutput { .drvHash=outputHash, .outputName=outputName };
             result.builtOutputs.insert_or_assign(
                 std::move(outputName),
-                Realisation { .id=drvOutput, .outPath=*outputPath });
+                Realisation { .id=drvOutput, .outPath=output.second });
         }
     }
 
@@ -366,13 +354,13 @@ static std::map<StorePath, ValidPathInfo> queryPathInfos(
     /* Get info about each output path. */
     std::map<StorePath, ValidPathInfo> infos;
     conn.to << ServeProto::Command::QueryPathInfos;
-    conn.to << ServeProto::write(localStore, conn, outputs);
+    conn.to << ServeProto::write(conn, outputs);
     conn.to.flush();
     while (true) {
         auto storePathS = readString(conn.from);
         if (storePathS == "") break;
         auto deriver = readString(conn.from); // deriver
-        auto references = ServeProto::Serialise<StorePathSet>::read(localStore, conn);
+        auto references = ServeProto::Serialise<StorePathSet>::read(conn);
         readLongLong(conn.from); // download size
         auto narSize = readLongLong(conn.from);
         auto narHash = Hash::parseAny(readString(conn.from), HashType::SHA256);
@@ -555,19 +543,27 @@ void State::buildRemote(AsyncIoRoot & aio,
                process. Meh. */
         });
 
-        ::Machine::Connection conn {
+        ::Machine::Connection localConn {
             .from = child.out.get(),
             .to = child.in.get(),
+            .store = *localStore,
+            .machine = machine,
+        };
+
+        ::Machine::Connection destConn {
+            .from = child.out.get(),
+            .to = child.in.get(),
+            .store = *destStore,
             .machine = machine,
         };
 
         Finally updateStats([&]() {
-            bytesReceived += conn.from.read;
-            bytesSent += conn.to.written;
+            bytesReceived += (localConn.from.read + destConn.from.read);
+            bytesSent += (localConn.to.written + destConn.to.written);
         });
 
         try {
-          build_remote::handshake(conn, buildOptions.repeats);
+          build_remote::handshake(localConn, buildOptions.repeats);
         } catch (EndOfFile & e) {
             child.sshPid.wait();
             std::string s = chomp(readFile(result.logFile));
@@ -585,7 +581,7 @@ void State::buildRemote(AsyncIoRoot & aio,
            copy the immediate sources of the derivation and the required
            outputs of the input derivations. */
         updateStep(ssSendingInputs);
-        BasicDerivation resolvedDrv = build_remote::sendInputs(aio, *this, *step, *localStore, *destStore, conn, result.overhead, nrStepsWaiting, nrStepsCopyingTo);
+        BasicDerivation resolvedDrv = build_remote::sendInputs(aio, *this, *step, *localStore, *destStore, localConn, destConn, result.overhead, nrStepsWaiting, nrStepsCopyingTo);
 
         logFileDel.cancel();
 
@@ -608,7 +604,7 @@ void State::buildRemote(AsyncIoRoot & aio,
 
         BuildResult buildResult = build_remote::performBuild(
             aio,
-            conn,
+            localConn,
             *localStore,
             step->drvPath,
             resolvedDrv,
@@ -662,7 +658,7 @@ void State::buildRemote(AsyncIoRoot & aio,
             auto now1 = std::chrono::steady_clock::now();
 
             size_t totalNarSize = 0;
-            auto infos = build_remote::queryPathInfos(conn, *localStore, outputs, totalNarSize);
+            auto infos = build_remote::queryPathInfos(localConn, *localStore, outputs, totalNarSize);
 
             if (totalNarSize > maxOutputSize) {
                 result.stepStatus = bsNarSizeLimitExceeded;
@@ -673,25 +669,10 @@ void State::buildRemote(AsyncIoRoot & aio,
             printMsg(lvlDebug, "copying outputs of ‘%s’ from ‘%s’ (%d bytes)",
                 localStore->printStorePath(step->drvPath), machine->sshName, totalNarSize);
 
-            build_remote::copyPathsFromRemote(conn, narMembers, *localStore, *destStore, infos, aio);
+            build_remote::copyPathsFromRemote(localConn, narMembers, *localStore, *destStore, infos, aio);
             auto now2 = std::chrono::steady_clock::now();
 
             result.overhead += std::chrono::duration_cast<std::chrono::milliseconds>(now2 - now1).count();
-        }
-
-        /* Register the outputs of the newly built drv */
-        if (experimentalFeatureSettings.isEnabled(Xp::CaDerivations)) {
-            auto outputHashes = aio.blockOn(staticOutputHashes(*localStore, *step->drv));
-            for (auto & [outputName, realisation] : buildResult.builtOutputs) {
-                // Register the resolved drv output
-                aio.blockOn(destStore->registerDrvOutput(realisation));
-
-                // Also register the unresolved one
-                auto unresolvedRealisation = realisation;
-                unresolvedRealisation.signatures.clear();
-                unresolvedRealisation.id.drvHash = outputHashes.at(outputName);
-                aio.blockOn(destStore->registerDrvOutput(unresolvedRealisation));
-            }
         }
 
         /* Shut down the connection. */
