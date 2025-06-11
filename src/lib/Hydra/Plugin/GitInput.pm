@@ -237,7 +237,9 @@ sub fetchInput {
     # revision (‘shortRev’).
     my $revCount = grab(cmd => ["git", "rev-list", "--count", "$revision"], dir => $clonePath, chomp => 1);
     my $gitTag = grab(cmd => ["git", "describe", "--always", "$revision"], dir => $clonePath, chomp => 1);
-    my $shortRev = grab(cmd => ["git", "rev-parse", "--short", "$revision"], dir => $clonePath, chomp => 1);
+    # the number 7 is the hash length as per the Nix implementations Hash::gitShortRev method
+    # these should be kept in sync as to avoid Hydra and Nix producing different shortRev fields for inputs on the same git input
+    my $shortRev = substr grab(cmd => ["git", "rev-parse", "--short", "$revision"], dir => $clonePath, chomp => 1), 0, 7;
 
     return
         { uri => $uri
