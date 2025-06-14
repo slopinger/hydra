@@ -19,4 +19,5 @@ hydra_queue_runner = executable('hydra-queue-runner',
     prom_cpp_pull_dep,
   ],
   install: true,
+  link_args: [ '-rdynamic'],
 )

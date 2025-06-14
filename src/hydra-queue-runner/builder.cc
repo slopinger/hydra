@@ -4,6 +4,7 @@
 #include "lix/libstore/binary-cache-store.hh"
 #include "lix/libutil/error.hh"
 #include "lix/libutil/finally.hh"
+#include "lix/libutil/error.hh"
 #include "state.hh"
 
 using namespace nix;
@@ -50,11 +51,18 @@ void State::builder(MachineReservation::ptr reservation)
                 reservation ? reservation->machine->sshName : std::string("(no machine)"),
                 e.what());
             conn.markBad();
-        } catch (std::exception & e) {
-            printMsg(lvlError, "uncaught exception building ‘%s’ on ‘%s’: %s",
+        } catch (BaseException & ex) {
+            logException(fmt(
+                "uncaught exception building ‘%s’ on ‘%s’",
                 localStore->printStorePath(activeStep->step->drvPath),
-                reservation ? reservation->machine->sshName : std::string("(no machine)"),
-                e.what());
+                reservation ? reservation->machine->sshName : std::string("(no machine)")
+            ), ex);
+        } catch (std::exception & ex) {
+            logException(fmt(
+                "uncaught exception building ‘%s’ on ‘%s’",
+                localStore->printStorePath(activeStep->step->drvPath),
+                reservation ? reservation->machine->sshName : std::string("(no machine)")
+            ), ex);
         }
     }
 

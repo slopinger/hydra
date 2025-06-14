@@ -1,5 +1,6 @@
 #include "hydra-build-result.hh"
 #include "lix/libstore/globals.hh"
+#include "lix/libutil/error.hh"
 #include "lix/libutil/async.hh"
 #include "lix/libutil/thread-pool.hh"
 #include "state.hh"
@@ -18,13 +19,15 @@ void State::queueMonitor()
         auto conn(aio.blockOn(dbPool.get()));
         try {
             queueMonitorLoop(aio, *conn);
+        } catch (BaseException & ex) {
+            logException("uncaught exception in queue monitor", ex);
         } catch (pqxx::broken_connection & e) {
             printMsg(lvlError, "queue monitor: %s", e.what());
             printMsg(lvlError, "queue monitor: Reconnecting in 10s");
             conn.markBad();
             sleep(10);
         } catch (std::exception & e) {
-            printError("queue monitor: %s", e.what());
+            logException("uncaught exception in queue monitor", e);
             sleep(10); // probably a DB problem, so don't retry right away
         }
     }
