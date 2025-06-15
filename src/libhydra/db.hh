@@ -27,19 +27,18 @@ struct Connection : pqxx::connection
 };
 
 
-class receiver : public pqxx::notification_receiver
+class receiver
 {
     std::optional<std::string> status;
 
 public:
 
     receiver(pqxx::connection_base & c, const std::string & channel)
-        : pqxx::notification_receiver(c, channel) { }
-
-    void operator() (const std::string & payload, int pid) override
     {
-        status = payload;
-    };
+        c.listen(channel, [&](pqxx::notification n) -> void {
+            status = n.payload;
+        });
+    }
 
     std::optional<std::string> get() {
         auto s = status;
