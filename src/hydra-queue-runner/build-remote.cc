@@ -91,10 +91,10 @@ static void openConnection(::Machine::ptr machine, Path tmpDir, int stderrFD, SS
         parent.close();
 
         if (dup2(child.get(), STDIN_FILENO) == -1)
-            throw SysError("cannot dup input pipe to stdin");
+            throw SysError("cannot dup socket to stdin");
 
         if (dup2(child.get(), STDOUT_FILENO) == -1)
-            throw SysError("cannot dup output pipe to stdout");
+            throw SysError("cannot dup socket to stdout");
 
         if (dup2(stderrFD, STDERR_FILENO) == -1)
             throw SysError("cannot dup stderr");
