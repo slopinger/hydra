@@ -4,6 +4,7 @@
 
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <sys/socket.h>
 #include <fcntl.h>
 
 #include "lix/libstore/build-result.hh"
@@ -50,12 +51,16 @@ static Strings extraStoreArgs(std::string & machine)
     return result;
 }
 
-static void openConnection(::Machine::ptr machine, Path tmpDir, int stderrFD, SSH::Connection & child)
+static void openConnection(::Machine::ptr machine, Path tmpDir, int stderrFD, SSH::Connection & conn)
 {
     std::string pgmName;
-    Pipe to, from;
-    to.create();
-    from.create();
+    std::array<int, 2> sp;
+
+    if (socketpair(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0, sp.data()) < 0) {
+        throw SysError("socketpair() for ssh");
+    }
+
+    AutoCloseFD parent(sp[0]), child(sp[1]);
 
     Strings argv;
     if (machine->isLocalhost()) {
@@ -80,13 +85,15 @@ static void openConnection(::Machine::ptr machine, Path tmpDir, int stderrFD, SS
         append(argv, extraArgs);
     }
 
-    child.sshPid = startProcess([&]() {
+    conn.sshPid = startProcess([&]() {
         restoreProcessContext();
 
-        if (dup2(to.readSide.get(), STDIN_FILENO) == -1)
+        parent.close();
+
+        if (dup2(child.get(), STDIN_FILENO) == -1)
             throw SysError("cannot dup input pipe to stdin");
 
-        if (dup2(from.writeSide.get(), STDOUT_FILENO) == -1)
+        if (dup2(child.get(), STDOUT_FILENO) == -1)
             throw SysError("cannot dup output pipe to stdout");
 
         if (dup2(stderrFD, STDERR_FILENO) == -1)
@@ -97,16 +104,9 @@ static void openConnection(::Machine::ptr machine, Path tmpDir, int stderrFD, SS
         throw SysError("cannot start %s", pgmName);
     });
 
-    to.readSide.reset();
-    from.writeSide.reset();
+    child.close();
 
-    child.in = AutoCloseFD{to.writeSide.release()};
-    child.out = AutoCloseFD{from.readSide.release()};
-
-    // XXX: determine the actual max value we can use from /proc.
-    int pipesize = 1024 * 1024;
-    fcntl(child.in.get(), F_SETPIPE_SZ, &pipesize);
-    fcntl(child.out.get(), F_SETPIPE_SZ, &pipesize);
+    conn.socket = std::move(parent);
 }
 
 
@@ -544,15 +544,15 @@ void State::buildRemote(AsyncIoRoot & aio,
         });
 
         ::Machine::Connection localConn {
-            .from = child.out.get(),
-            .to = child.in.get(),
+            .from = child.socket.get(),
+            .to = child.socket.get(),
             .store = *localStore,
             .machine = machine,
         };
 
         ::Machine::Connection destConn {
-            .from = child.out.get(),
-            .to = child.in.get(),
+            .from = child.socket.get(),
+            .to = child.socket.get(),
             .store = *destStore,
             .machine = machine,
         };
@@ -676,7 +676,7 @@ void State::buildRemote(AsyncIoRoot & aio,
         }
 
         /* Shut down the connection. */
-        child.in.reset();
+        child.socket.reset();
         child.sshPid.wait();
 
     } catch (Error & e) {
