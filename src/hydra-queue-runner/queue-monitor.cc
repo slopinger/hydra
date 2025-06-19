@@ -111,7 +111,7 @@ bool State::getQueuedBuilds(AsyncIoRoot & aio, Connection & conn,
     {
         pqxx::work txn(conn);
 
-        auto res = txn.exec_params
+        auto res = txn.exec
             ("select builds.id, builds.jobset_id, jobsets.project as project, "
              "jobsets.name as jobset, job, drvPath, maxsilent, timeout, timestamp, "
              "globalPriority, priority from Builds "
@@ -161,11 +161,11 @@ bool State::getQueuedBuilds(AsyncIoRoot & aio, Connection & conn,
             if (!build->finishedInDB) {
                 auto mc = startDbUpdate();
                 pqxx::work txn(conn);
-                txn.exec_params0
+                txn.exec
                     ("update Builds set finished = 1, buildStatus = $2, startTime = $3, stopTime = $3 where id = $1 and finished = 0",
-                     build->id,
+                     pqxx::params{build->id,
                      (int) bsAborted,
-                     time(nullptr));
+                     time(nullptr)}).no_rows();
                 txn.commit();
                 build->finishedInDB = true;
                 nrBuildsDone++;
@@ -195,17 +195,17 @@ bool State::getQueuedBuilds(AsyncIoRoot & aio, Connection & conn,
                    derivation path, then by output path. */
                 BuildID propagatedFrom = 0;
 
-                auto res = txn.exec_params1
+                auto res = txn.exec
                     ("select max(build) from BuildSteps where drvPath = $1 and startTime != 0 and stopTime != 0 and status = 1",
-                     localStore->printStorePath(ex.step->drvPath));
+                     pqxx::params{localStore->printStorePath(ex.step->drvPath)}).one_row();
                 if (!res[0].is_null()) propagatedFrom = res[0].as<BuildID>();
 
                 if (!propagatedFrom) {
                     for (auto & [outputName, outputPath] : aio.blockOn(destStore->queryDerivationOutputMap(ex.step->drvPath, &*localStore))) {
                         constexpr std::string_view common = "select max(s.build) from BuildSteps s join BuildStepOutputs o on s.build = o.build where startTime != 0 and stopTime != 0 and status = 1";
-                        auto res = txn.exec_params(
+                        auto res = txn.exec(
                                 std::string { common } + " and path = $1",
-                                localStore->printStorePath(outputPath));
+                                pqxx::params{localStore->printStorePath(outputPath)});
                         if (!res[0][0].is_null()) {
                             propagatedFrom = res[0][0].as<BuildID>();
                             break;
@@ -214,12 +214,12 @@ bool State::getQueuedBuilds(AsyncIoRoot & aio, Connection & conn,
                 }
 
                 createBuildStep(aio, txn, 0, build->id, ex.step, "", bsCachedFailure, "", propagatedFrom);
-                txn.exec_params
+                txn.exec
                     ("update Builds set finished = 1, buildStatus = $2, startTime = $3, stopTime = $3, isCachedBuild = 1, notificationPendingSince = $3 "
                      "where id = $1 and finished = 0",
-                     build->id,
+                     pqxx::params{build->id,
                      (int) (ex.step->drvPath == build->drvPath ? bsFailed : bsDepFailed),
-                     time(nullptr));
+                     time(nullptr)});
                 notifyBuildFinished(txn, build->id, {});
                 txn.commit();
                 build->finishedInDB = true;
@@ -636,10 +636,9 @@ Jobset::ptr State::createJobset(pqxx::work & txn,
         if (i != jobsets_->end()) return i->second;
     }
 
-    auto res = txn.exec_params1
+    auto res = txn.exec
         ("select schedulingShares from Jobsets where id = $1",
-         jobsetID);
-    if (res.empty()) throw Error("missing jobset - can't happen");
+         pqxx::params{jobsetID}).one_row();
 
     auto shares = res["schedulingShares"].as<unsigned int>();
 
@@ -647,11 +646,11 @@ Jobset::ptr State::createJobset(pqxx::work & txn,
     jobset->setShares(shares);
 
     /* Load the build steps from the last 24 hours. */
-    auto res2 = txn.exec_params
+    auto res2 = txn.exec
         ("select s.startTime, s.stopTime from BuildSteps s join Builds b on build = id "
          "where s.startTime is not null and s.stopTime > $1 and jobset_id = $2",
-         time(nullptr) - Jobset::schedulingWindow * 10,
-         jobsetID);
+         pqxx::params{time(nullptr) - Jobset::schedulingWindow * 10,
+         jobsetID});
     for (auto const & row : res2) {
         auto startTime = row["startTime"].as<time_t>();
         auto stopTime = row["stopTime"].as<time_t>();
@@ -688,11 +687,11 @@ BuildOutput State::getBuildOutputCached(nix::AsyncIoRoot & aio, Connection & con
     pqxx::work txn(conn);
 
     for (auto & [name, output] : derivationOutputs) {
-        auto r = txn.exec_params
+        auto r = txn.exec
             ("select id, buildStatus, releaseName, closureSize, size from Builds b "
              "join BuildOutputs o on b.id = o.build "
              "where finished = 1 and (buildStatus = 0 or buildStatus = 6) and path = $1",
-             localStore->printStorePath(output));
+             pqxx::params{localStore->printStorePath(output)});
         if (r.empty()) continue;
         auto id = r[0][0].as<BuildID>();
 
@@ -704,9 +703,9 @@ BuildOutput State::getBuildOutputCached(nix::AsyncIoRoot & aio, Connection & con
         res.closureSize = r[0][3].is_null() ? 0 : r[0][3].as<uint64_t>();
         res.size = r[0][4].is_null() ? 0 : r[0][4].as<uint64_t>();
 
-        auto products = txn.exec_params
+        auto products = txn.exec
             ("select type, subtype, fileSize, sha256hash, path, name, defaultPath from BuildProducts where build = $1 order by productnr",
-             id);
+             pqxx::params{id});
 
         for (auto row : products) {
             BuildProduct product;
@@ -728,9 +727,9 @@ BuildOutput State::getBuildOutputCached(nix::AsyncIoRoot & aio, Connection & con
             res.products.emplace_back(product);
         }
 
-        auto metrics = txn.exec_params
+        auto metrics = txn.exec
             ("select name, unit, value from BuildMetrics where build = $1",
-             id);
+             pqxx::params{id});
 
         for (auto row : metrics) {
             BuildMetric metric;

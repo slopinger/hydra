@@ -336,7 +336,7 @@ struct Machine : nix::Machine
 };
 
 
-class HydraConfig;
+struct HydraConfig;
 
 
 class State
