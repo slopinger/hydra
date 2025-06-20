@@ -37,7 +37,7 @@ BuildOutput getBuildOutput(
         if (!narMembers.count(outputS)) {
             printInfo("fetching NAR contents of '%s'...", outputS);
             auto source = aio.blockOn(store->narFromPath(output));
-            extractNarData(source, outputS, narMembers);
+            aio.blockOn(extractNarData(*source, outputS, narMembers));
         }
     }
 

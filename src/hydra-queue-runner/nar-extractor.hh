@@ -17,12 +17,7 @@ using NarMemberDatas = std::map<nix::Path, NarMemberData>;
 
 /* Read a NAR from a source and get to some info about every file
    inside the NAR. */
-void extractNarData(
-    nix::box_ptr<nix::Source> & source,
-    const nix::Path & prefix,
-    NarMemberDatas & members);
-
-nix::WireFormatGenerator extractNarDataFilter(
-    nix::Source & source,
+kj::Promise<nix::Result<void>> extractNarData(
+    nix::AsyncInputStream & source,
     const nix::Path & prefix,
     NarMemberDatas & members);

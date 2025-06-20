@@ -185,7 +185,7 @@ State::StepResult State::doBuildStep(AsyncIoRoot & aio,
             try {
                 auto store = destStore.try_cast_shared<BinaryCacheStore>();
                 if (uploadLogsToBinaryCache && store && pathExists(result.logFile)) {
-                    store->upsertFile("log/" + std::string(step->drvPath.to_string()), readFile(result.logFile), "text/plain; charset=utf-8");
+                    aio.blockOn(store->upsertFile("log/" + std::string(step->drvPath.to_string()), readFile(result.logFile), "text/plain; charset=utf-8"));
                     unlink(result.logFile.c_str());
                 }
             } catch (...) {

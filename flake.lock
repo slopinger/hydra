@@ -21,6 +21,7 @@
           "flake-compat"
         ],
         "nix2container": "nix2container",
+        "nix_2_18": [],
         "nixpkgs": [
           "nixpkgs"
         ],
@@ -28,11 +29,11 @@
         "pre-commit-hooks": "pre-commit-hooks"
       },
       "locked": {
-        "lastModified": 1749682763,
-        "narHash": "sha256-DDhns3NS6L5OlYR0mSX03I5D7uGLyyd3MZegd1wTCyc=",
+        "lastModified": 1750506763,
+        "narHash": "sha256-hCbhc9P+UmIlYv81+vs6v3bDqviCUhwPH3XqClZdfSk=",
         "ref": "refs/heads/main",
-        "rev": "ee0655240270480d7f6063dcf12ec47f04d2ded6",
-        "revCount": 18025,
+        "rev": "242a228124f77b57c2e3b3aedb259ffb7913cd3c",
+        "revCount": 18071,
         "type": "git",
         "url": "https://git.lix.systems/lix-project/lix"
       },

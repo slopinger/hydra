@@ -4,6 +4,7 @@
   inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-25.05";
 
   inputs.lix.url = "git+https://git.lix.systems/lix-project/lix";
+  inputs.lix.inputs.nix_2_18.follows = "";
   inputs.lix.inputs.nixpkgs.follows = "nixpkgs";
   inputs.lix.inputs.flake-compat.follows = "flake-compat";
 
