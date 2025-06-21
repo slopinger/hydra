@@ -309,7 +309,7 @@ struct Machine : nix::Machine
     // A connection to a machine
     struct Connection {
         CountingFdSource from;
-        nix::FdSink to;
+        CountingFdSink to;
         nix::ServeProto::Version remoteVersion;
         nix::Store & store;
 

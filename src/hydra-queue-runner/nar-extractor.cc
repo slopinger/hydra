@@ -8,133 +8,108 @@
 #include <unordered_set>
 #include <utility>
 
+#include <filesystem>
+
 using namespace nix;
 
-static Generator<Bytes> readHydraData(
-    NarMemberData &narData,
-    Generator<Bytes> contents,
-    uint64_t size)
+static std::filesystem::path stripTrailingSlash(std::filesystem::path && p)
 {
-    HashSink hashSink(HashType::SHA256);
-    while (auto block = contents.next()) {
-        std::string_view data = {block->data(), block->size()};
-
-        *narData.fileSize += block->size();
-        hashSink(data);
-        if (narData.contents) {
-            narData.contents->append(data);
-        }
-        assert(narData.fileSize <= size);
-        if (narData.fileSize == size) {
-            auto [hash, len] = hashSink.finish();
-            assert(narData.fileSize == len);
-            narData.sha256 = hash;
-        }
-
-        co_yield *block;
+    auto new_path = p.lexically_normal();
+    if (new_path.filename().empty()) {
+        return new_path.parent_path();
     }
+    return new_path;
 }
 
-static Generator<nar::Entry> discoverHydraDataInNAR(
-    NarMemberDatas &members,
-    const Path &prefix,
-    const Path pathSuffix,
-    nar::Entry root)
-{
+kj::Promise<Result<void>> extractNarData(
+    AsyncInputStream & source,
+    const Path & prefix,
+    NarMemberDatas & members)
+try {
     static const std::unordered_set<Path> filesToKeep{
         "/nix-support/hydra-build-products",
         "/nix-support/hydra-release-name",
         "/nix-support/hydra-metrics",
     };
 
-    nix::overloaded handlers {
-        [&](nar::File f) -> nar::Entry {
-            return nar::File{
-                f.executable,
-                f.size,
-                [](
-                    nar::File f,
-                    NarMemberDatas &members,
-                    const Path &pathSuffix,
-                    const Path &prefix
-                ) -> Generator<Bytes> {
-                    auto pref = prefix + pathSuffix;
-                    auto memberData = NarMemberData{
-                        .type = FSAccessor::Type::tRegular,
-                        .fileSize = 0,
-                        .contents = filesToKeep.count(pathSuffix)
-                            ? std::optional("")
-                            : std::nullopt,
-                    };
-                    co_yield readHydraData(memberData, std::move(f.contents), f.size);
-                    members.insert_or_assign(pref, memberData);
-                }(std::move(f), members, pathSuffix, prefix),
-            };
-        },
-        [&](nar::Symlink sl) -> nar::Entry {
-            members.insert_or_assign(
-                prefix + pathSuffix,
-                NarMemberData{.type = FSAccessor::Type::tSymlink});
-            return sl;
-        },
-        [&](nar::Directory d) -> nar::Entry {
-            auto pref = prefix + pathSuffix;
-            members.insert_or_assign(
-                pref, NarMemberData{.type = FSAccessor::Type::tDirectory});
+    struct HydraNARVisitor : NARParseVisitor
+    {
+        private:
+            std::filesystem::path prefix;
+            std::filesystem::path pathSuffix;
+            NarMemberDatas & members;
 
-            return nar::Directory{
-                ([](
-                    NarMemberDatas &members,
-                    nar::Directory d,
-                    const Path &prefix,
-                    const Path &pathSuffix
-                ) -> Generator<std::pair<const std::string&, nar::Entry>> {
-                    while (auto e = d.contents.next()) {
-                        auto iter = discoverHydraDataInNAR(
-                            members,
-                            prefix,
-                            pathSuffix + "/" + e->first,
-                            std::move(e->second)
-                        );
-                        co_yield std::pair{
-                            std::cref(e->first),
-                            *iter.next(),
-                        };
-                        assert(!iter.next().has_value());
-                    }
-                }(members, std::move(d), prefix, pathSuffix))};
+        public:
+        explicit HydraNARVisitor(NarMemberDatas & members, Path prefix, Path pathSuffix = "") : prefix(std::move(prefix)), pathSuffix(std::move(pathSuffix)), members(members) { }
+
+        box_ptr<NARParseVisitor> createDirectory(const std::string & name) override
+        {
+            auto pref = stripTrailingSlash(prefix / pathSuffix / name);
+            members.insert_or_assign(
+                    pref, NarMemberData{.type = FSAccessor::Type::tDirectory});
+
+            return make_box_ptr<HydraNARVisitor>(members, prefix, pathSuffix / name);
+        }
+
+
+        box_ptr<FileHandle> createRegularFile(const std::string & name, uint64_t size, bool _executable) override
+        {
+            struct HashingHandle : FileHandle
+            {
+            private:
+                HashSink hasher;
+                NarMemberData & narData;
+                uint64_t expectedSize;
+
+
+            public:
+                HashingHandle(NarMemberData & narData, uint64_t expectedSize) : hasher(HashType::SHA256), narData(narData), expectedSize(expectedSize) { }
+
+                void receiveContents(std::string_view data) override
+                {
+                    hasher(data);
+                    *narData.fileSize += data.size();
+                    if (narData.contents)
+                        narData.contents->append(data);
+
+                    assert(narData.fileSize <= expectedSize);
+                }
+
+                void close() override
+                {
+                    assert(narData.fileSize == expectedSize);
+                    auto [hash, len] = hasher.finish();
+                    assert(narData.fileSize == len);
+                    narData.sha256 = hash;
+                }
+            };
+
+            auto fullPath = stripTrailingSlash(prefix / pathSuffix / name);
+            auto memberData = &members.insert_or_assign(fullPath.lexically_normal(), NarMemberData{
+                .type = FSAccessor::Type::tRegular,
+                .fileSize = 0,
+                .contents = filesToKeep.count("/" / pathSuffix / name) ?
+                std::optional("") : std::nullopt
+            }).first->second;
+
+            auto x = members[fullPath];
+            return make_box_ptr<HashingHandle>(*memberData, size);
+        }
+
+
+        void createSymlink(const std::string & name, const std::string & target) override
+        {
+            members.insert_or_assign(
+                    stripTrailingSlash(prefix / pathSuffix / name),
+                    NarMemberData{.type = FSAccessor::Type::tSymlink});
         }
     };
 
-    co_yield std::visit(handlers, std::move(root));
-}
+    auto visitor = HydraNARVisitor(members, prefix);
 
-void extractNarData(
-    box_ptr<Source> & source,
-    const Path & prefix,
-    NarMemberDatas & members)
-{
-    auto parser = extractNarDataFilter(*source, prefix, members);
-    while (parser.next()) {
-        // ignore raw data
-    }
-}
+    LIX_TRY_AWAIT(parseDump(visitor, source));
 
-nix::WireFormatGenerator extractNarDataFilter(
-    Source & source,
-    const Path & prefix,
-    NarMemberDatas & members)
-{
-    return [](Source & source, const Path & prefix, NarMemberDatas & members) -> WireFormatGenerator {
-        auto items = nar::parse(source);
-        auto inner = discoverHydraDataInNAR(
-            members,
-            prefix,
-            "",
-            std::move(*items.next())
-        );
-        co_yield nar::dump(*inner.next());
-        assert(!items.next().has_value());
-        assert(!inner.next().has_value());
-    }(source, prefix, members);
+    co_return result::success();
+} catch (...) {
+    co_return result::current_exception();
 }

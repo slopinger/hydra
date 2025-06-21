@@ -1,11 +1,16 @@
 #include <algorithm>
 #include <cmath>
+#include <lix/libutil/async-io.hh>
+#include <lix/libutil/box_ptr.hh>
+#include <lix/libutil/file-descriptor.hh>
+#include <memory>
 #include <ranges>
 
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/socket.h>
 #include <fcntl.h>
+#include <unistd.h>
 
 #include "lix/libstore/build-result.hh"
 #include "lix/libstore/path.hh"
@@ -16,6 +21,7 @@
 #include "lix/libutil/current-process.hh"
 #include "lix/libutil/finally.hh"
 #include "lix/libutil/url.hh"
+#include "lix/libutil/async-collect.hh"
 #include "state.hh"
 
 #include "lix/libstore/temporary-dir.hh"
@@ -128,6 +134,11 @@ static void copyClosureTo(
     conn.to << ServeProto::Command::QueryValidPaths << 1 << useSubstitutes;
     conn.to << ServeProto::write(conn, closure);
     conn.to.flush();
+
+    Pipe fst, snd;
+
+    fst.create();
+    snd.create();
 
     /* Get back the set of paths that are already valid on the remote
        host. */
@@ -381,52 +392,80 @@ static std::map<StorePath, ValidPathInfo> queryPathInfos(
     return infos;
 }
 
-static void copyPathFromRemote(
+static kj::Promise<Result<void>> copyPathFromRemote(
     ::Machine::Connection & conn,
     NarMemberDatas & narMembers,
     Store & localStore,
     Store & destStore,
-    const ValidPathInfo & info,
-    AsyncIoRoot & aio
+    const ValidPathInfo & info
 )
-{
-      /* Receive the NAR from the remote and add it to the
-          destination store. Meanwhile, extract all the info from the
-          NAR that getBuildOutput() needs. */
-      auto coro = [&]() -> WireFormatGenerator {
-          /* Note: we should only send the command to dump the store
-              path to the remote if the NAR is actually going to get read
-              by the destination store, which won't happen if this path
-              is already valid on the destination store. Since this
-              lambda function only gets executed if someone tries to read
-              from source2, we will send the command from here rather
-              than outside the lambda. */
-          conn.to << ServeProto::Command::DumpStorePath << localStore.printStorePath(info.path);
-          conn.to.flush();
+try {
+    Pipe pipe;
+    pipe.create();
 
-          co_yield extractNarDataFilter(conn.from, localStore.printStorePath(info.path), narMembers);
-      };
-      AsyncGeneratorInputStream inputStream{coro()};
+  /* Note: we should only send the command to dump the store
+            path to the remote if the NAR is actually going to get read
+            by the destination store, which won't happen if this path
+            is already valid on the destination store. Since this
+            lambda function only gets executed if someone tries to read
+            from source2, we will send the command from here rather
+            than outside the lambda. */
+    conn.to << ServeProto::Command::DumpStorePath << localStore.printStorePath(info.path);
+    conn.to.flush();
 
-      aio.blockOn(destStore.addToStore(info, inputStream, NoRepair, NoCheckSigs));
+    struct MainStream : AsyncInputStream {
+        AsyncInputStream & in;
+        AsyncFdIoStream out;
+
+        MainStream(AsyncInputStream &in, AutoCloseFD out)
+            : in(in), out(std::move(out)) {}
+
+        kj::Promise<Result<size_t>> read(void *buffer, size_t size) override
+        try {
+          auto got = LIX_TRY_AWAIT(in.read(buffer, size));
+          LIX_TRY_AWAIT(out.writeFull(buffer, got));
+          co_return got;
+        } catch (...) {
+          co_return result::current_exception();
+        }
+    };
+
+    AsyncSourceInputStream from{conn.from};
+    auto narStream = std::make_unique<MainStream>(from, std::move(pipe.writeSide));
+    AsyncFdIoStream storeStream{std::move(pipe.readSide)};
+
+    LIX_TRY_AWAIT(asyncJoin(
+        extractNarData(*narStream, localStore.printStorePath(info.path),
+                       narMembers)
+            .then([&](auto r) {
+              narStream.reset();
+              return r;
+            }),
+        destStore.addToStore(info, storeStream, NoRepair, NoCheckSigs)));
+
+    co_return result::success();
+} catch (...) {
+    co_return result::current_exception();
 }
 
-static void copyPathsFromRemote(
+static kj::Promise<Result<void>> copyPathsFromRemote(
     ::Machine::Connection & conn,
     NarMemberDatas & narMembers,
     Store & localStore,
     Store & destStore,
-    const std::map<StorePath, ValidPathInfo> & infos,
-    AsyncIoRoot & aio
+    const std::map<StorePath, ValidPathInfo> & infos
 )
-{
+try {
       auto pathsSorted = reverseTopoSortPaths(infos);
 
       for (auto & path : pathsSorted) {
           auto & info = infos.find(path)->second;
-          copyPathFromRemote(conn, narMembers, localStore, destStore, info, aio);
+          LIX_TRY_AWAIT(copyPathFromRemote(conn, narMembers, localStore, destStore, info));
       }
 
+      co_return result::success();
+} catch (...) {
+    co_return result::current_exception();
 }
 
 }
@@ -669,7 +708,7 @@ void State::buildRemote(AsyncIoRoot & aio,
             printMsg(lvlDebug, "copying outputs of ‘%s’ from ‘%s’ (%d bytes)",
                 localStore->printStorePath(step->drvPath), machine->sshName, totalNarSize);
 
-            build_remote::copyPathsFromRemote(localConn, narMembers, *localStore, *destStore, infos, aio);
+            aio.blockOn(build_remote::copyPathsFromRemote(localConn, narMembers, *localStore, *destStore, infos));
             auto now2 = std::chrono::steady_clock::now();
 
             result.overhead += std::chrono::duration_cast<std::chrono::milliseconds>(now2 - now1).count();
