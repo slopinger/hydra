@@ -420,11 +420,14 @@ try {
         MainStream(AsyncInputStream &in, AutoCloseFD out)
             : in(in), out(std::move(out)) {}
 
-        kj::Promise<Result<size_t>> read(void *buffer, size_t size) override
+        kj::Promise<Result<std::optional<size_t>>> read(void *buffer, size_t size) override
         try {
-          auto got = LIX_TRY_AWAIT(in.read(buffer, size));
-          LIX_TRY_AWAIT(out.writeFull(buffer, got));
-          co_return got;
+          if (const auto got = LIX_TRY_AWAIT(in.read(buffer, size))) {
+            LIX_TRY_AWAIT(out.writeFull(buffer, *got));
+            co_return got;
+          } else {
+            co_return std::nullopt;
+          }
         } catch (...) {
           co_return result::current_exception();
         }
