@@ -161,7 +161,7 @@ static void copyClosureTo(
     aio.blockOn(destStore.exportPaths(missing, conn.to));
     conn.to.flush();
 
-    if (readInt(conn.from) != 1)
+    if (readNum<unsigned>(conn.from) != 1)
         throw Error("remote machine failed to import closure");
 }
 
@@ -219,10 +219,10 @@ static void handshake(::Machine::Connection & conn, unsigned int repeats)
     conn.to << SERVE_MAGIC_1 << 0x206;
     conn.to.flush();
 
-    unsigned int magic = readInt(conn.from);
+    auto magic = readNum<unsigned>(conn.from);
     if (magic != SERVE_MAGIC_2)
         throw Error("protocol mismatch with ‘nix-store --serve’ on ‘%1%’", conn.machine->sshName);
-    conn.remoteVersion = readInt(conn.from);
+    conn.remoteVersion = readNum<unsigned>(conn.from);
     // Now `conn` is initialized.
     if (GET_PROTOCOL_MAJOR(conn.remoteVersion) != 0x200)
         throw Error("unsupported ‘nix-store --serve’ protocol version on ‘%1%’", conn.machine->sshName);
@@ -372,8 +372,8 @@ static std::map<StorePath, ValidPathInfo> queryPathInfos(
         if (storePathS == "") break;
         auto deriver = readString(conn.from); // deriver
         auto references = ServeProto::Serialise<StorePathSet>::read(conn);
-        readLongLong(conn.from); // download size
-        auto narSize = readLongLong(conn.from);
+        readNum<uint64_t>(conn.from); // download size
+        auto narSize = readNum<uint64_t>(conn.from);
         auto narHash = Hash::parseAny(readString(conn.from), HashType::SHA256);
         auto ca = ContentAddress::parseOpt(readString(conn.from));
         readStrings<StringSet>(conn.from); // sigs
