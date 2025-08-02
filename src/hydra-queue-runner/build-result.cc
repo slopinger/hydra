@@ -127,8 +127,9 @@ BuildOutput getBuildOutput(
         if (file == narMembers.end() ||
             file->second.type != FSAccessor::Type::tRegular)
             continue;
-        res.releaseName = trim(file->second.contents.value());
-        // FIXME: validate release name
+        auto contents = trim(file->second.contents.value());
+        if (std::regex_match(contents, std::regex("[a-zA-Z0-9.@:_-]+")))
+            res.releaseName = contents;
     }
 
     /* Get metrics. */
