@@ -41,6 +41,9 @@ my $statsdConfig = Hydra::Helper::Nix::getStatsdConfig($config);
 $Net::Statsd::HOST = $statsdConfig->{'host'};
 $Net::Statsd::PORT = $statsdConfig->{'port'};
 
+# Clear NIX_PATH variable. This is no longer done by n-e-j.
+delete($ENV{"NIX_PATH"});
+
 alarm 3600; # FIXME: make configurable
 
 
