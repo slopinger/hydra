@@ -34,6 +34,7 @@
 , postgresql_13
 , nlohmann_json
 , prometheus-cpp
+, capnproto
 
 , cacert
 , foreman
@@ -177,7 +178,7 @@ stdenv.mkDerivation (finalAttrs: {
     boost
     nlohmann_json
     prometheus-cpp
-    nix.passthru.capnproto-lix
+    capnproto
   ];
 
   nativeCheckInputs = [
