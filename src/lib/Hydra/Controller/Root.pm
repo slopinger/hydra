@@ -12,6 +12,7 @@ use Nix::Config;
 use Encode;
 use File::Basename;
 use JSON::MaybeXS;
+use HTML::Entities;
 use List::Util qw[min max];
 use List::SomeUtils qw{any};
 use Net::Prometheus;
