@@ -188,7 +188,7 @@ sub oidc_login :Path('/oidc-login') Args(0) {
 
     doEmailLogin($self, $c, "oidc", $claims->{email}, $claims->{name} // undef, sprintf("oidc:$claims->{sub}"));
 
-    $c->res->redirect($c->uri_for($c->res->cookies->{'after_oidc'}));
+    $c->res->redirect($c->uri_for($c->session->{oidc_after}));
 }
 
 sub google_login :Path('/google-login') Args(0) {
@@ -280,10 +280,7 @@ sub oidc_redirect :Path('/oidc-redirect') Args(0) {
 
     my $after = "/" . $c->req->params->{after};
 
-    $c->res->cookies->{'after_oidc'} = {
-        name => 'after_oidc',
-        value => $after,
-    };
+    $c->session->{oidc_after} = $after;
 
     my $oidc_client = get_oidc_client($c);
     my $state = UUID4::Tiny::create_uuid_string();
