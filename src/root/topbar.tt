@@ -137,17 +137,19 @@
         <div id="g_id_onload" data-client_id="[% c.config.google_client_id %]" data-auto_prompt="false" data-callback="onGoogleSignIn">
         </div>
         <div class="g_id_signin" data-type="standard"></div>
-        <div class="dropdown-divider"></div>
       [% END %]
       [% IF c.config.github_client_id %]
         <a class="dropdown-item" href="/github-redirect?after=[% c.req.path | uri %]">Sign in with GitHub</a>
-        <div class="dropdown-divider"></div>
       [% END %]
       [% IF c.config.enable_oidc_login %]
         <a class="dropdown-item" href="/oidc-redirect?after=[% c.req.path %]">Sign in with [% c.config.oidc_name or "OIDC" %]</a>
-        <div class="dropdown-divider"></div>
       [% END %]
-      <a class="dropdown-item" href="#hydra-signin" data-toggle="modal">Sign in with a Hydra account</a>
+      [% IF !c.config.enable_hydra_login.defined or c.config.enable_hydra_login %]
+        [% IF c.config.enable_google_login or c.config.github_client_id or c.config.enable_oidc_login %]
+          <div class="dropdown-divider"></div>
+        [% END %]
+        <a class="dropdown-item" href="#hydra-signin" data-toggle="modal">Sign in with a Hydra account</a>
+      [% END %]
     [% END %]
   [% END %]
 
