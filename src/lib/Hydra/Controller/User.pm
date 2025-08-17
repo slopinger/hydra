@@ -156,7 +156,6 @@ sub doEmailLogin {
     $c->flash->{successMsg} = "You are now signed in as <tt>" . encode_entities($email) . "</tt>.";
 }
 
-
 sub oidc_login :Path('/oidc-login') Args(0) {
     my ($self, $c) = @_;
 
@@ -183,10 +182,28 @@ sub oidc_login :Path('/oidc-login') Args(0) {
     my $claims = decode_json($res->decoded_content) or error($c, q{Could not decode claims.}, 401);
 
     if (defined $claims->{email_verified} and !$claims->{email_verified}) {
-        error($c, "Email address must be verified.", 401);
+      error($c, "Email address is not verified", 401)
     }
 
     doEmailLogin($self, $c, "oidc", $claims->{email}, $claims->{name} // undef, sprintf("oidc:$claims->{sub}"));
+
+    my $role_mapping = $c->config->{oidc_role_mapping} or ();
+    my @groups = @{ $claims->{groups} // [] };
+    $c->user->userroles->delete;
+    foreach my $group ( @groups ) {
+        next unless defined($role_mapping->{$group});
+        my $mapping = $role_mapping->{$group};
+        my @mapped_roles;
+        if (ref($mapping) eq 'ARRAY') {
+            @mapped_roles = @{$mapping};
+        } else {
+            @mapped_roles = split /[\s,]+/, $mapping;
+        }
+        for my $mapped_role (@mapped_roles) {
+            next unless $mapped_role;
+            $c->user->userroles->create({ role => $mapped_role });
+        }
+    }
 
     $c->res->redirect($c->uri_for($c->session->{oidc_after}));
 }
