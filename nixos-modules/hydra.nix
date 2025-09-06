@@ -321,6 +321,7 @@ in
       { wantedBy = [ "multi-user.target" ];
         requires = [ "hydra-init.service" ];
         after = [ "hydra-init.service" ];
+        path = with pkgs; [ zstd ];
         environment = serverEnv // {
           HYDRA_DBI = "${serverEnv.HYDRA_DBI};application_name=hydra-server";
         };
