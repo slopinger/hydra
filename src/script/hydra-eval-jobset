@@ -361,7 +361,13 @@ sub evalJobs {
     my @cmd;
 
     if (defined $flakeRef) {
-        @cmd = ("nix-eval-jobs", "--flake", $flakeRef . '#hydraJobs');
+        @cmd = ("nix-eval-jobs", "--flake", $flakeRef . '#hydraJobs',
+                # Disable the eval cache to prevent SQLite database contention.
+                # Since Hydra typically evaluates each revision only once,
+                # parallel workers would compete for database locks without
+                # providing any benefit from caching.
+                "--option", "eval-cache", "false"
+        );
     } else {
         my $nixExprInput = $inputInfo->{$nixExprInputName}->[0]
             or die "cannot find the input containing the job expression\n";
@@ -376,7 +382,7 @@ sub evalJobs {
     push @cmd, "--meta";
     push @cmd, "--constituents";
     push @cmd, "--force-recurse";
-    push @cmd, ("--option", "allow-import-from-derivation", "false") if $config->{allow_import_from_derivation} // "true" ne "true";
+    push @cmd, ("--option", "allow-import-from-derivation", "false") if ($config->{allow_import_from_derivation} // "false") ne "true";
     push @cmd, ("--workers", $config->{evaluator_workers} // 1);
     push @cmd, ("--max-memory-size", $config->{evaluator_max_memory_size} // 4096);
 
