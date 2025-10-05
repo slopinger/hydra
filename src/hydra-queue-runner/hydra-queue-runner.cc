@@ -12,8 +12,11 @@
 
 #include <nlohmann/json.hpp>
 
+#include "db.hh"
 #include "hydra-build-result.hh"
 #include "lix/libstore/store-api.hh"
+#include "lix/libutil/error.hh"
+#include "lix/libutil/logging.hh"
 #include "lix/libutil/signals.hh"
 #include "state.hh"
 
@@ -889,9 +892,19 @@ void State::run(AsyncIoRoot & aio, BuildID buildOne)
     }
 
     {
-        auto conn(aio.blockOn(dbPool.get()));
-        clearBusy(*conn, 0);
-        dumpStatus(*conn, aio);
+        try {
+            auto conn(aio.blockOn(dbPool.get()));
+            clearBusy(*conn, 0);
+            dumpStatus(*conn, aio);
+        } catch (nix::ForeignException & e) {
+            if (auto brokenConnEx = e.as<pqxx::broken_connection>()) {
+                logError(nix::ErrorInfo{
+                    .msg = nix::fmt("%1% failed to connect to PostgreSQL!\n%2%", "hydra-queue-runner", Uncolored(brokenConnEx->what()))
+                });
+                std::exit(1);
+            }
+            throw;
+        }
     }
 
     machinesReadyLock.lock();
