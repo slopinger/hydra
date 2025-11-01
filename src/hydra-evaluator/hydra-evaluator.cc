@@ -559,5 +559,7 @@ int main(int argc, char * * argv)
             }
             evaluator.run(aio);
         }
+
+        return 0;
     });
 }

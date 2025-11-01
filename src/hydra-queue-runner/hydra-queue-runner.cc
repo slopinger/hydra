@@ -1018,5 +1018,7 @@ int main(int argc, char * * argv)
             state.unlock(aio);
         else
             state.run(aio, buildOne);
+
+        return 0;
     });
 }
