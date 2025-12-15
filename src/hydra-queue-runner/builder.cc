@@ -520,5 +520,6 @@ void State::failStep(
 void State::addRoot(const StorePath & storePath)
 {
     auto root = rootsDir + "/" + std::string(storePath.to_string());
-    if (!pathExists(root)) writeFile(root, "");
+    auto dest = localStore->printStorePath(storePath);
+    if (!pathExists(root)) createSymlink(dest, root);
 }
