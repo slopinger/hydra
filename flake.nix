@@ -1,7 +1,7 @@
 {
   description = "A Nix-based continuous build system";
 
-  inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-25.05";
+  inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-25.11";
 
   inputs.lix.url = "git+https://git.lix.systems/lix-project/lix";
   inputs.lix.inputs.nix_2_18.follows = "";
