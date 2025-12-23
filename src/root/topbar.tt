@@ -141,11 +141,11 @@
       [% IF c.config.github_client_id %]
         <a class="dropdown-item" href="/github-redirect?after=[% c.req.path | uri %]">Sign in with GitHub</a>
       [% END %]
-      [% IF c.config.enable_oidc_login %]
-        <a class="dropdown-item" href="/oidc-redirect?after=[% c.req.path %]">Sign in with [% c.config.oidc_name or "OIDC" %]</a>
+      [% IF c.config.oidc.enable %]
+        <a class="dropdown-item" href="/oidc-redirect?after=[% c.req.path %]">Sign in with [% c.config.oidc.name or "OIDC" %]</a>
       [% END %]
       [% IF !c.config.enable_hydra_login.defined or c.config.enable_hydra_login %]
-        [% IF c.config.enable_google_login or c.config.github_client_id or c.config.enable_oidc_login %]
+        [% IF c.config.enable_google_login or c.config.github_client_id or c.config.oidc.enable %]
           <div class="dropdown-divider"></div>
         [% END %]
         <a class="dropdown-item" href="#hydra-signin" data-toggle="modal">Sign in with a Hydra account</a>

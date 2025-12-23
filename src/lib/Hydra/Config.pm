@@ -6,11 +6,15 @@ use Config::General;
 use List::SomeUtils qw(none);
 use YAML qw(LoadFile);
 
+use File::Slurper qw(read_text);
+use JSON::MaybeXS qw(decode_json);
+
 our @ISA = qw(Exporter);
 our @EXPORT = qw(
     getHydraConfig
     getLDAPConfig
     getLDAPConfigAmbient
+    getOIDCConfig
 );
 
 our %configGeneralOpts = (-UseApacheInclude => 1, -IncludeAgain => 1, -IncludeRelative => 1);
@@ -151,6 +155,84 @@ sub validate_roles {
     }
 
     return 1;
+}
+
+my $oidcCfgCache;
+
+sub downloadOIDCSettings {
+    my ($url, $timeout, $retries, $wait) = @_;
+    my $ua = LWP::UserAgent->new;
+    $ua->timeout($timeout);
+
+    for my $r (1..$retries) {
+        my $res = $ua->get($url);
+
+        if ($res->is_error) {
+            my $code = $res->code;
+            my $msg = $res->message;
+            warn("Cannot read OIDC configuration from $url: [$code] $msg ($r/$retries)");
+            sleep $wait;
+        } else {
+            return decode_json($res->decoded_content);
+        }
+    }
+
+    die("Failed downloading OIDC configuration");
+}
+
+sub getOIDCConfig {
+    return $oidcCfgCache if defined $oidcCfgCache;
+
+    my $config = getHydraConfig();
+    $oidcCfgCache = $config->{"oidc"} // {};
+    if ($oidcCfgCache->{"enable"}) {
+        if (!$oidcCfgCache->{"name"}) {
+            $oidcCfgCache->{"name"} = "OIDC";
+        }
+
+        if (!$oidcCfgCache->{"scopes"}) {
+            $oidcCfgCache->{"scopes"} = "openid email";
+        }
+
+        my @missing;
+        for my $key ("client_id", "client_secret_file", "config_uri") {
+            if (!$oidcCfgCache->{$key}) {
+                push @missing, "'$key'";
+            }
+        }
+
+        if (@missing) {
+            die "Missing required key(s) ${\join ', ', @missing} in <oidc>-settings";
+        }
+
+        $oidcCfgCache->{"client_secret"} = read_text($oidcCfgCache->{client_secret_file});
+        chomp $oidcCfgCache->{"client_secret"};
+        delete $oidcCfgCache->{client_secret_file};
+
+        my $urls = downloadOIDCSettings(
+            $oidcCfgCache->{config_uri},
+            $oidcCfgCache->{config_uri_download_timeout_secs} // 10,
+            $oidcCfgCache->{config_uri_download_retries} // 3,
+            $oidcCfgCache->{config_uri_download_wait_secs} // 3,
+        );
+
+        $oidcCfgCache->{userinfo_endpoint} = $urls->{userinfo_endpoint};
+        $oidcCfgCache->{authorization_endpoint} = $urls->{authorization_endpoint};
+        $oidcCfgCache->{token_endpoint} = $urls->{token_endpoint};
+
+        if (!$oidcCfgCache->{groups_to_roles}) {
+            $oidcCfgCache->{groups_to_roles} = {};
+        } else {
+            for my $ssoGroup (keys %{$oidcCfgCache->{groups_to_roles}}) {
+                my @roles = split /[\s,]+/, $oidcCfgCache->{groups_to_roles}->{$ssoGroup};
+                delete $oidcCfgCache->{groups_to_roles}->{$ssoGroup};
+                @{$oidcCfgCache->{groups_to_roles}->{$ssoGroup}} = @roles;
+                validate_roles($oidcCfgCache->{groups_to_roles}->{$ssoGroup});
+            }
+        }
+    }
+
+    return $oidcCfgCache;
 }
 
 sub valid_roles {

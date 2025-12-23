@@ -7,7 +7,7 @@ use base 'Hydra::Base::Controller::REST';
 use File::Slurper qw(read_text);
 use Crypt::RandPasswd;
 use Digest::SHA1 qw(sha1_hex);
-use Hydra::Config qw(getLDAPConfigAmbient);
+use Hydra::Config qw(getLDAPConfigAmbient getOIDCConfig);
 use Hydra::Helper::Nix;
 use Hydra::Helper::CatalystUtils;
 use Hydra::Helper::Email;
@@ -21,13 +21,13 @@ use Encode qw(decode);
 
 __PACKAGE__->config->{namespace} = '';
 
+my $oidcConfig = getOIDCConfig();
 sub get_oidc_client {
-    my $c = shift;
     return OIDC::Lite::Client::WebServer->new(
-        id               => $c->config->{oidc_client_id},
-        secret           => $c->config->{oidc_client_secret},
-        authorize_uri    => $c->config->{oidc_auth_uri},
-        access_token_uri => $c->config->{oidc_token_uri},
+        id               => $oidcConfig->{client_id},
+        secret           => $oidcConfig->{client_secret},
+        authorize_uri    => $oidcConfig->{authorization_endpoint},
+        access_token_uri => $oidcConfig->{token_endpoint},
     );
 }
 
@@ -159,7 +159,7 @@ sub doEmailLogin {
 sub oidc_login :Path('/oidc-login') Args(0) {
     my ($self, $c) = @_;
 
-    error($c, "Logging in via OIDC is not enabled.", 404) unless $c->config->{enable_oidc_login};
+    error($c, "Logging in via OIDC is not enabled.", 404) unless $oidcConfig->{enable};
     my $oidc_client = get_oidc_client($c);
 
     error($c, q{OIDC state mismatch. Is this a CSRF attack?}) unless $c->session->{oidc_state} && $c->session->{oidc_state} eq $c->request->param("state");
@@ -175,7 +175,7 @@ sub oidc_login :Path('/oidc-login') Args(0) {
     $c->session->{refresh_token} = $token_response->refresh_token;
 
     my $res = LWP::UserAgent->new->get(
-        $c->config->{oidc_userinfo_uri},
+        $oidcConfig->{userinfo_endpoint},
         Authorization => sprintf(q{Bearer %s}, $token_response->access_token)
     );
 
@@ -187,21 +187,16 @@ sub oidc_login :Path('/oidc-login') Args(0) {
 
     doEmailLogin($self, $c, "oidc", $claims->{email}, $claims->{name} // undef, sprintf("oidc:$claims->{sub}"));
 
-    my $role_mapping = $c->config->{oidc_role_mapping} or ();
-    my @groups = @{ $claims->{groups} // [] };
-    $c->user->userroles->delete;
-    foreach my $group ( @groups ) {
-        next unless defined($role_mapping->{$group});
-        my $mapping = $role_mapping->{$group};
-        my @mapped_roles;
-        if (ref($mapping) eq 'ARRAY') {
-            @mapped_roles = @{$mapping};
-        } else {
-            @mapped_roles = split /[\s,]+/, $mapping;
-        }
-        for my $mapped_role (@mapped_roles) {
-            next unless $mapped_role;
-            $c->user->userroles->create({ role => $mapped_role });
+    if ($oidcConfig->{groups_to_roles}) {
+        $c->user->userroles->delete;
+        my @groups = @{ $claims->{groups} // [] };
+        foreach my $group ( @groups ) {
+            next unless defined($oidcConfig->{groups_to_roles}->{$group});
+            my @mapping = @{$oidcConfig->{groups_to_roles}->{$group}};
+            for my $mapped_role (@mapping) {
+                next unless $mapped_role;
+                $c->user->userroles->create({ role => $mapped_role });
+            }
         }
     }
 
@@ -302,10 +297,9 @@ sub oidc_redirect :Path('/oidc-redirect') Args(0) {
     my $oidc_client = get_oidc_client($c);
     my $state = UUID4::Tiny::create_uuid_string();
     $c->session->{oidc_state} = $state;
-    my @scope = $c->config->{oidc_scope} or ("openid");
     my $redirect_url = $oidc_client->uri_to_redirect(
         redirect_uri => $c->uri_for('/oidc-login'),
-        scope        => "@scope",
+        scope        => $oidcConfig->{scopes},
         state        => $state,
     );
 

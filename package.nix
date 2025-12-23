@@ -56,6 +56,8 @@
 , rpm
 , dpkg
 , cdrkit
+
+, perlPackages
 }:
 
 let
