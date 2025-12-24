@@ -64,11 +64,19 @@ sub login_POST {
 
 sub logout :Local :Args(0) :ActionClass('REST') { }
 
-sub logout_POST {
+sub logout_GET {
     my ($self, $c) = @_;
+
     $c->flash->{flashMsg} = "You are no longer signed in." if $c->user_exists();
     $c->logout;
-    $self->status_no_content($c);
+
+    my $type = $c->session->{type};
+    $c->delete_session("Logout");
+    if ($type eq "oidc" && defined $oidcConfig->{end_session_endpoint}) {
+        $c->res->redirect($oidcConfig->{end_session_endpoint});
+    } else {
+        $c->res->redirect($c->uri_for("/"));
+    }
 }
 
 sub doLDAPLogin {
@@ -217,6 +225,7 @@ sub oidc_login :Path('/oidc-login') Args(0) {
     $c->session->{access_token} = $token_response->access_token;
     $c->session->{expires_at} = time() + $token_response->expires_in;
     $c->session->{refresh_token} = $token_response->refresh_token;
+    $c->session->{type} = "oidc";
 
     doEmailLogin($self, $c, "oidc", $claims->{email}, $claims->{name} // undef);
 

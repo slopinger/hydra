@@ -219,6 +219,7 @@ sub getOIDCConfig {
         $oidcCfgCache->{userinfo_endpoint} = $urls->{userinfo_endpoint};
         $oidcCfgCache->{authorization_endpoint} = $urls->{authorization_endpoint};
         $oidcCfgCache->{token_endpoint} = $urls->{token_endpoint};
+        $oidcCfgCache->{end_session_endpoint} = $urls->{end_session_endpoint};
         $oidcCfgCache->{jwks} = downloadOIDCSettings(
             $urls->{jwks_uri},
             $oidcCfgCache->{config_uri_download_timeout_secs} // 10,
