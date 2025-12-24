@@ -12,11 +12,15 @@ use Hydra::Helper::Nix;
 use Hydra::Helper::CatalystUtils;
 use Hydra::Helper::Email;
 use OIDC::Lite::Client::WebServer;
+use OIDC::Lite::Model::IDToken;
+use Crypt::PK::RSA;
+use Crypt::JWT qw(decode_jwt);
 use LWP::UserAgent;
 use JSON::MaybeXS;
 use HTML::Entities;
 use UUID4::Tiny;
 use Encode qw(decode);
+use Data::Dumper;
 
 
 __PACKAGE__->config->{namespace} = '';
@@ -170,9 +174,37 @@ sub oidc_login :Path('/oidc-login') Args(0) {
         redirect_uri => $c->uri_for('/oidc-login'),
     ) or error($c, $oidc_client->errstr);
 
-    $c->session->{access_token} = $token_response->access_token;
-    $c->session->{expires_at} = time() + $token_response->expires_in;
-    $c->session->{refresh_token} = $token_response->refresh_token;
+    my $id_token = OIDC::Lite::Model::IDToken->load($token_response->id_token);
+    my $finalKey;
+    my $alg;
+    foreach my $key (@{$oidcConfig->{jwks}->{keys}}) {
+        if ($key->{kid} eq $id_token->header->{kid}) {
+            $alg = $key->{alg};
+            $finalKey = Crypt::PK::RSA->new;
+            $finalKey->import_key($key);
+            last;
+        }
+    }
+
+    unless (defined $finalKey && defined $alg) {
+        error($c, "No such known key for kid $id_token->{header}->{kid}");
+    }
+
+    my $decoded_token = eval {
+        decode_jwt(
+            token => $token_response->{id_token},
+            key => $finalKey,
+            accepted_alg => [$alg],
+            verify_aud => sub {
+                my ($aud) = @_;
+                return $aud eq $oidcConfig->{client_id};
+            },
+            verify_iat => 1,
+        )
+    };
+    if ($@) {
+        error($c, "Failed to verify ID token: $@");
+    }
 
     my $res = LWP::UserAgent->new->get(
         $oidcConfig->{userinfo_endpoint},
@@ -181,9 +213,17 @@ sub oidc_login :Path('/oidc-login') Args(0) {
 
     my $claims = decode_json($res->decoded_content) or error($c, q{Could not decode claims.}, 401);
 
-    if (defined $claims->{email_verified} and !$claims->{email_verified}) {
-      error($c, "Email address is not verified", 401)
+    unless ($claims->{sub} eq $decoded_token->{sub}) {
+        error($c, "ID token subject doesn't match userinfo subject", 401);
     }
+
+    if (defined $claims->{email_verified} and !$claims->{email_verified}) {
+        error($c, "Email address is not verified", 401)
+    }
+
+    $c->session->{access_token} = $token_response->access_token;
+    $c->session->{expires_at} = time() + $token_response->expires_in;
+    $c->session->{refresh_token} = $token_response->refresh_token;
 
     doEmailLogin($self, $c, "oidc", $claims->{email}, $claims->{name} // undef, sprintf("oidc:$claims->{sub}"));
 
@@ -290,7 +330,7 @@ sub oidc_redirect :Path('/oidc-redirect') Args(0) {
 
     my ($self, $c) = @_;
 
-    my $after = "/" . $c->req->params->{after};
+    my $after = "/" . ($c->req->params->{after} // "");
 
     $c->session->{oidc_after} = $after;
 

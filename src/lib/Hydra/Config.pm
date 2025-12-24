@@ -219,6 +219,12 @@ sub getOIDCConfig {
         $oidcCfgCache->{userinfo_endpoint} = $urls->{userinfo_endpoint};
         $oidcCfgCache->{authorization_endpoint} = $urls->{authorization_endpoint};
         $oidcCfgCache->{token_endpoint} = $urls->{token_endpoint};
+        $oidcCfgCache->{jwks} = downloadOIDCSettings(
+            $urls->{jwks_uri},
+            $oidcCfgCache->{config_uri_download_timeout_secs} // 10,
+            $oidcCfgCache->{config_uri_download_retries} // 3,
+            $oidcCfgCache->{config_uri_download_wait_secs} // 3,
+        );
 
         if (!$oidcCfgCache->{groups_to_roles}) {
             $oidcCfgCache->{groups_to_roles} = {};

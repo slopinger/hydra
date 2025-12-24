@@ -86,6 +86,7 @@ let
         CatalystViewTT
         CatalystXRoleApplicator
         CatalystXScriptServerStarman
+        CryptJWT
         CryptPassphrase
         CryptPassphraseArgon2
         CryptRandPasswd
