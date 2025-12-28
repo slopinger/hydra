@@ -42,6 +42,7 @@
 , glibcLocales
 , libressl
 , openldap
+, dex
 , python3
 
 , openssh
@@ -195,6 +196,7 @@ stdenv.mkDerivation (finalAttrs: {
     subversion
     breezy
     openldap
+    dex
     postgresql_14
     pixz
     nix-eval-jobs
