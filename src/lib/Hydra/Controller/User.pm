@@ -108,15 +108,13 @@ sub doLDAPLogin {
 }
 
 sub doEmailLogin {
-    my ($self, $c, $type, $email, $fullName, $username) = @_;
+    my ($self, $c, $type, $email, $fullName) = @_;
 
     die "No email address provided.\n" unless defined $email;
 
     # Be paranoid about the email address format, since we do use it
     # in URLs.
     die "Illegal email address.\n" unless $email =~ /^[a-zA-Z0-9\.\-\_]+@[a-zA-Z0-9\.\-\_]+$/;
-
-    $username = $email unless defined $username;
 
     # If allowed_domains is set, check if the email address
     # returned is on these domains.  When not configured, allow all
@@ -220,7 +218,7 @@ sub oidc_login :Path('/oidc-login') Args(0) {
     $c->session->{expires_at} = time() + $token_response->expires_in;
     $c->session->{refresh_token} = $token_response->refresh_token;
 
-    doEmailLogin($self, $c, "oidc", $claims->{email}, $claims->{name} // undef, sprintf("oidc:$claims->{sub}"));
+    doEmailLogin($self, $c, "oidc", $claims->{email}, $claims->{name} // undef);
 
     if ($oidcConfig->{groups_to_roles}) {
         $c->user->userroles->delete;
