@@ -12,10 +12,6 @@
     <meta http-equiv="X-UA-Compatible" content="IE=Edge" />
     [% INCLUDE style.tt %]
 
-    [% IF c.config.enable_google_login %]
-      <meta name="google-signin-client_id" content="[% c.config.google_client_id %]">
-    [% END %]
-
     [% tracker %]
 
   </head>

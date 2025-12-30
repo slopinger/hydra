@@ -132,12 +132,6 @@
     </li>
   [% ELSE %]
     [% WRAPPER makeSubMenu title="Sign in" id="sign-in-menu" align="right" %]
-      [% IF c.config.enable_google_login %]
-        <script src="https://accounts.google.com/gsi/client" async defer></script>
-        <div id="g_id_onload" data-client_id="[% c.config.google_client_id %]" data-auto_prompt="false" data-callback="onGoogleSignIn">
-        </div>
-        <div class="g_id_signin" data-type="standard"></div>
-      [% END %]
       [% IF c.config.github_client_id %]
         <a class="dropdown-item" href="/github-redirect?after=[% c.req.path | uri %]">Sign in with GitHub</a>
       [% END %]
@@ -145,7 +139,7 @@
         <a class="dropdown-item" href="/oidc-redirect?after=[% c.req.path %]">Sign in with [% c.config.oidc.name or "OIDC" %]</a>
       [% END %]
       [% IF !c.config.enable_hydra_login.defined or c.config.enable_hydra_login %]
-        [% IF c.config.enable_google_login or c.config.github_client_id or c.config.oidc.enable %]
+        [% IF c.config.oidc.enable or c.config.github_client_id %]
           <div class="dropdown-divider"></div>
         [% END %]
         <a class="dropdown-item" href="#hydra-signin" data-toggle="modal">Sign in with a Hydra account</a>
