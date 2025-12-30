@@ -157,7 +157,6 @@ sub doEmailLogin {
 
     $c->set_authenticated($user);
 
-    $self->status_no_content($c);
     $c->flash->{successMsg} = "You are now signed in as <tt>" . encode_entities($email) . "</tt>.";
 }
 
