@@ -184,7 +184,9 @@ sub makeAndEvaluateJobset {
     for my $build ($jobset->builds) {
         if ($should_build) {
             runBuild($build) or die "Build '".$build->job."' from jobs/$expression should exit with return code 0.\n";
-            $build->discard_changes();
+            while (!defined $build->get_column("buildstatus")) {
+                $build->discard_changes();
+            }
         }
 
         $builds->{$build->job} = $build;
