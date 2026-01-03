@@ -4,6 +4,8 @@ use warnings;
 use JSON::MaybeXS;
 use Setup;
 
+my $start = time();
+
 my %ctx = test_init(
     hydra_config => q|
     <runcommand>
@@ -54,11 +56,11 @@ subtest "Validate the file parsed and at least one field matches" => sub {
 
 subtest "Validate a run log was created" => sub {
     my $runlog = $build->runcommandlogs->find({});
+    my $after_test = time();
     ok($runlog->did_succeed(), "The process did succeed.");
     is($runlog->job_matcher, "*:*:*", "An unspecified job matcher is defaulted to *:*:*");
     is($runlog->command, 'cp "$HYDRA_JSON" "$HYDRA_DATA/joboutput.json"', "The executed command is saved.");
-    is($runlog->start_time, within(time() - 1, 5), "The start time is recent.");
-    is($runlog->end_time, within(time() - 1, 5), "The end time is also recent.");
+    ok($start <= $runlog->start_time <= $runlog->end_time <= $after_test, "The start time is recent.");
     is($runlog->exit_code, 0, "This command should have succeeded.");
 
     subtest "Validate the run log file exists" => sub {
