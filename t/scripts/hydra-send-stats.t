@@ -22,7 +22,7 @@ is($stdout, "", "hydra-send-stats stdout should be empty");
 # but hydra-queue-runner sets store config for a remote store.
 # hydra-queue-runner initializes stores in its ctor now, so these warnings get propagated
 # in the tests to hydra-send-stats.
-$stderr = join "\n", grep { 0 != rindex $_, "warning: unknown setting" } split "\n", $stderr;
+$stderr = join "\n", grep { 0 != rindex $_, "warning: unknown setting" } split /\n/, $stderr;
 is($stderr, "", "hydra-send-stats stderr should be empty");
 is($res, 0, "hydra-send-stats --once should exit zero");
 

@@ -127,7 +127,7 @@ sub getCommits {
     my $res = [];
     foreach my $line (split /\n/, $out) {
         if ($line ne "") {
-            my ($revision, $author, $email) = split "\t", $line;
+            my ($revision, $author, $email) = split /\t/, $line;
             push @$res, { revision => $revision, author => $author, email => $email };
         }
     }
