@@ -3,6 +3,7 @@
 #include "lix/libmain/shared.hh"
 #include "lix/libutil/logging.hh"
 #include "lix/libutil/pool.hh"
+#include "lix/libutil/processes.hh"
 #include "lix/libutil/signals.hh"
 #include "lix/libutil/async.hh"
 
@@ -334,11 +335,11 @@ struct Evaluator
 
         assert(!jobset.pid);
 
-        jobset.pid = startProcess([&]() {
-            Strings args = { "hydra-eval-jobset", jobset.name.project, jobset.name.jobset };
-            execvp(args.front().c_str(), stringsToCharPtrs(args).data());
-            throw SysError("executing ‘%1%’", args.front());
+        auto proc = runProgram2({
+            .program = "hydra-eval-jobset",
+            .args = { jobset.name.project, jobset.name.jobset }
         });
+        jobset.pid = Pid(std::get<0>(proc.release()));
 
         state.runningEvals++;
 
