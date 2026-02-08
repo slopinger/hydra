@@ -20,6 +20,7 @@
 #include "lix/libutil/async.hh"
 #include "lix/libutil/current-process.hh"
 #include "lix/libutil/finally.hh"
+#include "lix/libutil/processes.hh"
 #include "lix/libutil/url.hh"
 #include "lix/libutil/async-collect.hh"
 #include "state.hh"
@@ -91,24 +92,19 @@ static void openConnection(::Machine::ptr machine, Path tmpDir, int stderrFD, SS
         append(argv, extraArgs);
     }
 
-    conn.sshPid = startProcess([&]() {
-        restoreProcessContext();
-
-        parent.close();
-
-        if (dup2(child.get(), STDIN_FILENO) == -1)
-            throw SysError("cannot dup socket to stdin");
-
-        if (dup2(child.get(), STDOUT_FILENO) == -1)
-            throw SysError("cannot dup socket to stdout");
-
-        if (dup2(stderrFD, STDERR_FILENO) == -1)
-            throw SysError("cannot dup stderr");
-
-        execvp(argv.front().c_str(), (char * *) stringsToCharPtrs(argv).data()); // FIXME: remove cast
-
-        throw SysError("cannot start %s", pgmName);
+    auto prog = argv.front();
+    argv.pop_front();
+    auto proc = runProgram2({
+        .program = prog,
+        .args = argv,
+        .redirections = {
+            {.dup = STDIN_FILENO, .from = child.get()},
+            {.dup = STDOUT_FILENO, .from = child.get()},
+            {.dup = STDERR_FILENO, .from = stderrFD},
+        }
     });
+
+    conn.sshPid = Pid(std::get<0>(proc.release()));
 
     child.close();
 
