@@ -76,7 +76,7 @@
   </div>
 
   [% IF !create || c.check_user_roles('admin') %]
-    [% mutable = c.check_user_roles('admin') %]
+    [% mutable = c.check_user_roles('admin') && user.type != 'oidc' %]
     <div class="form-group row card [% mutable ? "border-danger" : "border-light" %]">
       <div class="card-header">User Roles</div>
       <div class="card-body [% mutable ? "text-danger" : "" %]">

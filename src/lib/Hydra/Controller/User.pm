@@ -413,9 +413,12 @@ sub updatePreferences {
         $user->update({ emailaddress => $emailAddress })
             if $user->type eq "hydra";
 
-        $user->userroles->delete;
-        $user->userroles->create({ role => $_ })
-            foreach paramToList($c, "roles");
+        # This is disabled in the UI, so ignoring this silently.
+        if ($user->type ne "oidc") {
+            $user->userroles->delete;
+            $user->userroles->create({ role => $_ })
+                foreach paramToList($c, "roles");
+        }
     }
 }
 
