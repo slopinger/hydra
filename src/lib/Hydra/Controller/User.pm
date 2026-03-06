@@ -206,6 +206,13 @@ sub oidc_login :Path('/oidc-login') Args(0) {
         error($c, "Failed to verify ID token: $@");
     }
 
+    # Crypt::JWT already uses time() to make sure this isn't from the future.
+    # So making sure it's actually UTC won't help here anyways, hence continuing
+    # to use `time()`. Server-time should be UTC anyways.
+    if (($decoded_token->{iat} // 0) < time() - $oidcConfig->{iat_leeway}) {
+        error($c, "iat too far in the past");
+    }
+
     my $res = LWP::UserAgent->new->get(
         $oidcConfig->{userinfo_endpoint},
         Authorization => sprintf(q{Bearer %s}, $token_response->access_token)

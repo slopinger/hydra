@@ -190,6 +190,10 @@ sub getOIDCConfig {
             $oidcCfgCache->{"name"} = "OIDC";
         }
 
+        if (!$oidcCfgCache->{iat_leeway}) {
+            $oidcCfgCache->{iat_leeway} = 3600;
+        }
+
         if (!$oidcCfgCache->{"scopes"}) {
             $oidcCfgCache->{"scopes"} = "openid email";
         }
