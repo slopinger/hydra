@@ -7,17 +7,33 @@ use base 'Hydra::Base::Controller::REST';
 use File::Slurper qw(read_text);
 use Crypt::RandPasswd;
 use Digest::SHA1 qw(sha1_hex);
-use Hydra::Config qw(getLDAPConfigAmbient);
+use Hydra::Config qw(getLDAPConfigAmbient getOIDCConfig);
 use Hydra::Helper::Nix;
 use Hydra::Helper::CatalystUtils;
 use Hydra::Helper::Email;
+use OIDC::Lite::Client::WebServer;
+use OIDC::Lite::Model::IDToken;
+use Crypt::PK::RSA;
+use Crypt::JWT qw(decode_jwt);
 use LWP::UserAgent;
 use JSON::MaybeXS;
 use HTML::Entities;
+use UUID4::Tiny;
 use Encode qw(decode);
+use Data::Dumper;
 
 
 __PACKAGE__->config->{namespace} = '';
+
+my $oidcConfig = getOIDCConfig();
+sub get_oidc_client {
+    return OIDC::Lite::Client::WebServer->new(
+        id               => $oidcConfig->{client_id},
+        secret           => $oidcConfig->{client_secret},
+        authorize_uri    => $oidcConfig->{authorization_endpoint},
+        access_token_uri => $oidcConfig->{token_endpoint},
+    );
+}
 
 
 sub login :Local :Args(0) :ActionClass('REST') { }
@@ -48,11 +64,19 @@ sub login_POST {
 
 sub logout :Local :Args(0) :ActionClass('REST') { }
 
-sub logout_POST {
+sub logout_GET {
     my ($self, $c) = @_;
+
     $c->flash->{flashMsg} = "You are no longer signed in." if $c->user_exists();
     $c->logout;
-    $self->status_no_content($c);
+
+    my $type = $c->session->{type};
+    $c->delete_session("Logout");
+    if ($type eq "oidc" && defined $oidcConfig->{end_session_endpoint}) {
+        $c->res->redirect($oidcConfig->{end_session_endpoint});
+    } else {
+        $c->res->redirect($c->uri_for("/"));
+    }
 }
 
 sub doLDAPLogin {
@@ -119,11 +143,6 @@ sub doEmailLogin {
     my $user = $c->find_user({ username => $email });
 
     if ($user) {
-        # Automatically upgrade legacy Persona accounts to Google accounts.
-        if ($user->type eq "persona" && $type eq "google") {
-            $user->update({type => "google"});
-        }
-
         die "You cannot login via login type '$type'.\n" if $user->type ne $type;
     } else {
         $c->model('DB::Users')->create(
@@ -138,31 +157,98 @@ sub doEmailLogin {
 
     $c->set_authenticated($user);
 
-    $self->status_no_content($c);
     $c->flash->{successMsg} = "You are now signed in as <tt>" . encode_entities($email) . "</tt>.";
 }
 
-
-sub google_login :Path('/google-login') Args(0) {
+sub oidc_login :Path('/oidc-login') Args(0) {
     my ($self, $c) = @_;
-    requirePost($c);
 
-    error($c, "Logging in via Google is not enabled.") unless $c->config->{enable_google_login};
+    error($c, "Logging in via OIDC is not enabled.", 404) unless $oidcConfig->{enable};
+    my $oidc_client = get_oidc_client($c);
 
-    my $ua = LWP::UserAgent->new();
-    my $response = $ua->post(
-        'https://www.googleapis.com/oauth2/v3/tokeninfo',
-        { id_token => ($c->stash->{params}->{id_token} // die "No token."),
-        });
-    error($c, "Did not get a response from Google.") unless $response->is_success;
+    error($c, q{OIDC state mismatch. Is this a CSRF attack?}) unless $c->session->{oidc_state} && $c->session->{oidc_state} eq $c->request->param("state");
 
-    my $data = decode_json($response->decoded_content) or die;
+    my $code = $c->request->param("code");
+    my $token_response = $oidc_client->get_access_token(
+        code => $code,
+        redirect_uri => $c->uri_for('/oidc-login'),
+    ) or error($c, $oidc_client->errstr);
 
-    die unless $data->{aud} eq $c->config->{google_client_id};
-    die "Email address is not verified" unless $data->{email_verified};
-    # FIXME: verify hosted domain claim?
+    my $id_token = OIDC::Lite::Model::IDToken->load($token_response->id_token);
+    my $finalKey;
+    my $alg;
+    foreach my $key (@{$oidcConfig->{jwks}->{keys}}) {
+        if ($key->{kid} eq $id_token->header->{kid}) {
+            $alg = $key->{alg};
+            $finalKey = Crypt::PK::RSA->new;
+            $finalKey->import_key($key);
+            last;
+        }
+    }
 
-    doEmailLogin($self, $c, "google", $data->{email}, $data->{name} // undef);
+    unless (defined $finalKey && defined $alg) {
+        error($c, "No such known key for kid $id_token->{header}->{kid}");
+    }
+
+    my $decoded_token = eval {
+        decode_jwt(
+            token => $token_response->{id_token},
+            key => $finalKey,
+            accepted_alg => [$alg],
+            verify_aud => sub {
+                my ($aud) = @_;
+                return $aud eq $oidcConfig->{client_id};
+            },
+            verify_iat => 1,
+        )
+    };
+    if ($@) {
+        error($c, "Failed to verify ID token: $@");
+    }
+
+    # Crypt::JWT already uses time() to make sure this isn't from the future.
+    # So making sure it's actually UTC won't help here anyways, hence continuing
+    # to use `time()`. Server-time should be UTC anyways.
+    if (($decoded_token->{iat} // 0) < time() - $oidcConfig->{iat_leeway}) {
+        error($c, "iat too far in the past");
+    }
+
+    my $res = LWP::UserAgent->new->get(
+        $oidcConfig->{userinfo_endpoint},
+        Authorization => sprintf(q{Bearer %s}, $token_response->access_token)
+    );
+
+    my $claims = decode_json($res->decoded_content) or error($c, q{Could not decode claims.}, 401);
+
+    unless ($claims->{sub} eq $decoded_token->{sub}) {
+        error($c, "ID token subject doesn't match userinfo subject", 401);
+    }
+
+    if (defined $claims->{email_verified} and !$claims->{email_verified}) {
+        error($c, "Email address is not verified", 401)
+    }
+
+    $c->session->{access_token} = $token_response->access_token;
+    $c->session->{expires_at} = time() + $token_response->expires_in;
+    $c->session->{refresh_token} = $token_response->refresh_token;
+    $c->session->{type} = "oidc";
+
+    doEmailLogin($self, $c, "oidc", $claims->{email}, $claims->{name} // undef);
+
+    if ($oidcConfig->{groups_to_roles}) {
+        $c->user->userroles->delete;
+        my @groups = @{ $claims->{groups} // [] };
+        foreach my $group ( @groups ) {
+            next unless defined($oidcConfig->{groups_to_roles}->{$group});
+            my @mapping = @{$oidcConfig->{groups_to_roles}->{$group}};
+            for my $mapped_role (@mapping) {
+                next unless $mapped_role;
+                $c->user->userroles->create({ role => $mapped_role });
+            }
+        }
+    }
+
+    $c->res->redirect($c->uri_for($c->session->{oidc_after}));
 }
 
 sub github_login :Path('/github-login') Args(0) {
@@ -224,6 +310,26 @@ sub github_redirect :Path('/github-redirect') Args(0) {
     };
 
     $c->res->redirect("https://github.com/login/oauth/authorize?client_id=$client_id&scope=user:email");
+}
+
+sub oidc_redirect :Path('/oidc-redirect') Args(0) {
+
+    my ($self, $c) = @_;
+
+    my $after = "/" . ($c->req->params->{after} // "");
+
+    $c->session->{oidc_after} = $after;
+
+    my $oidc_client = get_oidc_client($c);
+    my $state = UUID4::Tiny::create_uuid_string();
+    $c->session->{oidc_state} = $state;
+    my $redirect_url = $oidc_client->uri_to_redirect(
+        redirect_uri => $c->uri_for('/oidc-login'),
+        scope        => $oidcConfig->{scopes},
+        state        => $state,
+    );
+
+    $c->res->redirect( $redirect_url );
 }
 
 
@@ -314,9 +420,12 @@ sub updatePreferences {
         $user->update({ emailaddress => $emailAddress })
             if $user->type eq "hydra";
 
-        $user->userroles->delete;
-        $user->userroles->create({ role => $_ })
-            foreach paramToList($c, "roles");
+        # This is disabled in the UI, so ignoring this silently.
+        if ($user->type ne "oidc") {
+            $user->userroles->delete;
+            $user->userroles->create({ role => $_ })
+                foreach paramToList($c, "roles");
+        }
     }
 }
 

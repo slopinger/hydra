@@ -306,4 +306,92 @@ in
       touch $out
     '');
 
+  oidc = forEachSystem (system:
+    let
+      oidcDomain = "127.0.0.1:8080";
+    in
+    with import (nixpkgs + "/nixos/lib/testing-python.nix") { inherit system; };
+    makeTest {
+      name = "hydra-oidc";
+      nodes.machine = {
+        imports = [ hydraServer ];
+        services.hydra-dev.extraConfig = ''
+          <oidc>
+            enable = 1
+            client_secret_file = /run/credentials/hydra-server.service/dex-secret
+            client_id = hydra
+            config_uri = http://${oidcDomain}/dex/.well-known/openid-configuration
+            scopes = openid email
+          </oidc>
+        '';
+        systemd.services.hydra-server.serviceConfig.LoadCredential = [
+          "dex-secret:/etc/dex/hydra"
+        ];
+        services.dex = {
+          enable = true;
+          settings = {
+            issuer = "http://${oidcDomain}/dex";
+            storage = {
+              type = "sqlite3";
+              config.file = "/tmp/db";
+            };
+            web.http = oidcDomain;
+            oauth2.skipApprovalScreen = true;
+            staticClients = [
+              {
+                id = "hydra";
+                name = "Hydra";
+                redirectURIs = [ "http://localhost:3000/oidc-login" ];
+                secretFile = "/etc/dex/hydra";
+              }
+            ];
+            connectors = [
+              {
+                type = "mockPassword";
+                id = "mock";
+                name = "Example";
+                config = {
+                  username = "admin";
+                  password = "password";
+                };
+              }
+            ];
+          };
+        };
+        environment.etc."dex/hydra" = {
+          mode = "0400";
+          user = "dex";
+          text = "hydrasecret";
+        };
+      };
+      testScript = ''
+        from urllib.parse import urlparse, parse_qs
+
+        machine.start()
+        machine.wait_for_unit("multi-user.target")
+        machine.wait_for_open_port(3000)
+        machine.wait_for_open_port(8080)
+
+        with subtest("Successful login"):
+            redirect_url = urlparse(machine.succeed("curl --fail -sS -c cjar http://localhost:3000/oidc-redirect/ -w '%{redirect_url}' | tail -n1").strip())
+            state_ = parse_qs(redirect_url.query)["state"]
+
+            t.assertEqual(1, len(state_))
+            state = state_[0]
+
+            oidc_state = machine.succeed(f"curl --fail -sS 'http://${oidcDomain}/dex/auth/mock?client_id=hydra&response_type=code&redirect_uri=http://localhost:3000/oidc-login&scope=openid+email&state={state}' | sed -n 's/.*state=\\(.*\\)\">.*/\\1/p'").strip()
+            print(oidc_state)
+
+            code = machine.succeed(f"curl --fail -fs '${oidcDomain}/dex/auth/mock/login?back=&state={oidc_state}' -d 'login=admin&password=password' -w '%{{redirect_url}}' | sed -n 's/.*code=\\(.*\\)&.*/\\1/p'").strip()
+            print(f"Got approval code {code}")
+
+            machine.succeed(f"curl -f -c cjar -b cjar 'http://localhost:3000/oidc-login/?code={code}&state={state}'")
+
+        with subtest("Hidden sites work"):
+            machine.fail("curl --fail -sS http://localhost:3000/dashboard/kilgore@kilgore.trout")
+            machine.succeed("curl --fail -sS http://localhost:3000/dashboard/kilgore@kilgore.trout -c cjar -b cjar")
+      '';
+    }
+  );
+
 }

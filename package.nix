@@ -6,7 +6,7 @@
 
 , buildEnv
 
-, perlPackages
+, pkgs
 
 , nix
 , git
@@ -42,6 +42,7 @@
 , glibcLocales
 , libressl
 , openldap
+, dex
 , python3
 
 , openssh
@@ -56,6 +57,8 @@
 , rpm
 , dpkg
 , cdrkit
+
+, perlPackages
 }:
 
 let
@@ -65,7 +68,7 @@ let
       ([
         nix.perl-bindings
         git
-      ] ++ (with perlPackages; [
+      ] ++ (with (import ./perl-packages.nix pkgs); [
         AuthenSASL
         CatalystActionREST
         CatalystAuthenticationStoreDBIxClass
@@ -84,6 +87,7 @@ let
         CatalystViewTT
         CatalystXRoleApplicator
         CatalystXScriptServerStarman
+        CryptJWT
         CryptPassphrase
         CryptPassphraseArgon2
         CryptRandPasswd
@@ -112,6 +116,8 @@ let
         NetAmazonS3
         NetPrometheus
         NetStatsd
+        OIDCLite
+        NumberBytesHuman
         PadWalker
         ParallelForkManager
         PerlCriticCommunity
@@ -190,6 +196,7 @@ stdenv.mkDerivation (finalAttrs: {
     subversion
     breezy
     openldap
+    dex
     postgresql_14
     pixz
     nix-eval-jobs
@@ -244,6 +251,9 @@ stdenv.mkDerivation (finalAttrs: {
     mkdir -p .hydra-data
     export HYDRA_DATA="$(pwd)/.hydra-data"
     export HYDRA_DBI='dbi:Pg:dbname=hydra;host=localhost;port=64444'
+    export PGPORT=64444
+    export PGDATABASE=hydra
+    export PGHOST=localhost
 
     popd >/dev/null
   '';

@@ -261,6 +261,72 @@ default role mapping:
 Note that configuring both the LDAP parameters in the hydra.conf and via
 the environment variable is a fatal error.
 
+OIDC Authentication backend
+----------------------------
+
+Hydra supports authentication via [OIDC](https://openid.net/developers/how-connect-works/)
+using the [OIDC::Lite](https://metacpan.org/pod/OIDC::Lite) library. The following configuration
+options (including defaults) exist:
+
+```
+<oidc>
+  enable = 0    # 1 to enable
+  name = "OIDC" # Used as display name in the "Sign in with" link
+
+  client_id = «unset by default»
+  client_secret_file = «unset by default»  # must be readable by `hydra-server.service`
+
+  config_uri = «unset by default»  # the /.well-known/openid-configuration URL of your IdP
+  scopes = openid email
+</oidc>
+```
+
+### Mapping groups to Hydra roles
+
+Mapping OIDC groups to roles works similar to LDAP role mappings:
+
+```
+<oidc>
+  <groups_to_roles>
+    developer = bump-to-front, cancel-build, restart-jobs
+    admin = admin
+  </groups_to_roles>
+</oidc>
+```
+
+On the left-hand side there are groups a user needs to be in. Then, the user
+gets exactly the roles from the right.
+
+Changes to OIDC-managed users are reset on each login.
+
+### Migrating Google login to OIDC
+
+Hydra used to support login via Google using OIDC. This has been removed in favor of the generic
+OIDC implementation. A migration script will change the type of all google users to OIDC.
+
+For Google, you also need a new credential that has not only an ID, but also a client secret.
+With that, the diff in your `hydra.conf` looks like this:
+
+```diff
+--- google	2025-12-27 10:51:59.987356596 +0100
++++ google.new	2025-12-27 10:53:45.914840530 +0100
+@@ -1,3 +1,8 @@
+-enable_google_login = 1
+-google_client_id = exampleclientid
+-email_verified = 1
++<oidc>
++  enable = 1
++  name = "Google account"
++  client_id = exampleclientid
++  client_secret_file = /path/to/secret
++  config_uri = https://accounts.google.com/.well-known/openid-configuration
++  scopes = openid email
++</oidc>
+```
+
+Please refer to the [Google documentation](https://developers.google.com/identity/openid-connect/openid-connect) about
+OIDC for further information.
+
 Webhook Authentication
 ---------------------
 
