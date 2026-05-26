@@ -318,9 +318,11 @@ sub oidc_redirect :Path('/oidc-redirect') Args(0) {
 
     my ($self, $c) = @_;
 
-    my $after = "/" . ($c->req->params->{after} // "");
+    my $after = $c->req->params->{after} // "";
+    $after =~ s{^/+}{};
+    $after =~ s{\\}{}g;  # also strip backslashes (some browsers normalize \\ to //);
 
-    $c->session->{oidc_after} = $after;
+    $c->session->{oidc_after} = "/" . $after;
 
     my $oidc_client = get_oidc_client($c);
     my $state = UUID4::Tiny::create_uuid_string();
