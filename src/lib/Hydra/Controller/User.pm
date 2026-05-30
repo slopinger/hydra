@@ -14,6 +14,7 @@ use Hydra::Helper::Email;
 use OIDC::Lite::Client::WebServer;
 use OIDC::Lite::Model::IDToken;
 use Crypt::PK::RSA;
+use Crypt::PK::ECC;
 use Crypt::JWT qw(decode_jwt);
 use LWP::UserAgent;
 use JSON::MaybeXS;
@@ -180,9 +181,15 @@ sub oidc_login :Path('/oidc-login') Args(0) {
     foreach my $key (@{$oidcConfig->{jwks}->{keys}}) {
         if ($key->{kid} eq $id_token->header->{kid}) {
             $alg = $key->{alg};
-            $finalKey = Crypt::PK::RSA->new;
-            $finalKey->import_key($key);
-            last;
+            if ($alg eq "RS256" || $alg eq "RS384" || $alg eq "RS512") {
+                $finalKey = Crypt::PK::RSA->new;
+                $finalKey->import_key($key);
+                last;
+            } elsif ($alg eq "ES256") {
+                $finalKey = Crypt::PK::ECC->new;
+                $finalKey->import_key($key);
+                last;
+            }
         }
     }
 
