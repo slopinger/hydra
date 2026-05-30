@@ -11,6 +11,7 @@ use Encode;
 use Fcntl qw(:flock);
 use Env;
 use Data::Dumper;
+use POSIX qw(strftime);
 
 my $CONFIG_SECTION = "git-input";
 
@@ -240,6 +241,13 @@ sub fetchInput {
     # the number 7 is the hash length as per the Nix implementations Hash::gitShortRev method
     # these should be kept in sync as to avoid Hydra and Nix producing different shortRev fields for inputs on the same git input
     my $shortRev = substr grab(cmd => ["git", "rev-parse", "--short", "$revision"], dir => $clonePath, chomp => 1), 0, 7;
+    my $lastModified = eval {
+        return int(grab(cmd => ["git", "log", "-1", "--format=%ct", "--no-show-signature", $revision], dir => $clonePath, chomp => 1));
+    };
+    if ($@) {
+        warn "Git repository's lastModified cannot be determined: $@";
+        $lastModified = 0;
+    }
 
     return
         { uri => $uri
@@ -249,6 +257,8 @@ sub fetchInput {
         , revCount => int($revCount)
         , gitTag => $gitTag
         , shortRev => $shortRev
+        , lastModified => $lastModified
+        , lastModifiedDate => strftime("%Y%m%d%H%M%S", localtime($lastModified))
         };
 }
 
