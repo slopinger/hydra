@@ -1,5 +1,6 @@
 with import ./config.nix;
 { src }:
+assert src?lastModified && src?lastModifiedDate;
 {
   copy =
     mkDerivation {
