@@ -34,10 +34,10 @@ in
       nodes.machine = hydraServer;
       testScript =
         ''
-          machine.wait_for_job("hydra-init")
-          machine.wait_for_job("hydra-server")
-          machine.wait_for_job("hydra-evaluator")
-          machine.wait_for_job("hydra-queue-runner")
+          machine.wait_for_unit("hydra-init.service")
+          machine.wait_for_unit("hydra-server.service")
+          machine.wait_for_unit("hydra-evaluator.service")
+          machine.wait_for_unit("hydra-queue-runner.service")
           machine.wait_for_open_port(3000)
           machine.succeed("curl --fail http://localhost:3000/")
         '';
@@ -59,7 +59,7 @@ in
         services.influxdb.enable = true;
       };
       testScript = ''
-        machine.wait_for_job("hydra-init")
+        machine.wait_for_unit("hydra-init.service")
 
         # Create an admin account and some other state.
         machine.succeed(
@@ -74,7 +74,7 @@ in
         )
 
         # Wait until InfluxDB can receive web requests
-        machine.wait_for_job("influxdb")
+        machine.wait_for_unit("influxdb.service")
         machine.wait_for_open_port(8086)
 
         # Create an InfluxDB database where hydra will write to
@@ -84,7 +84,7 @@ in
         )
 
         # Wait until hydra-server can receive HTTP requests
-        machine.wait_for_job("hydra-server")
+        machine.wait_for_unit("hydra-server.service")
         machine.wait_for_open_port(3000)
 
         # Setup the project and jobset
