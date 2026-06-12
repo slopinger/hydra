@@ -20,6 +20,8 @@ let
         # Without this nix tries to fetch packages from the default
         # cache.nixos.org which is not reachable from this sandboxed NixOS test.
         settings.substituters = [ ];
+        # Workaround for https://git.lix.systems/lix-project/lix/issues/1183
+        settings.trusted-users = config.nix.settings.extra-trusted-users;
       };
     };
 
