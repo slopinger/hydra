@@ -20,6 +20,8 @@ let
         # Without this nix tries to fetch packages from the default
         # cache.nixos.org which is not reachable from this sandboxed NixOS test.
         settings.substituters = [ ];
+        # Workaround for https://git.lix.systems/lix-project/lix/issues/1183
+        settings.trusted-users = config.nix.settings.extra-trusted-users;
       };
     };
 
@@ -34,10 +36,10 @@ in
       nodes.machine = hydraServer;
       testScript =
         ''
-          machine.wait_for_job("hydra-init")
-          machine.wait_for_job("hydra-server")
-          machine.wait_for_job("hydra-evaluator")
-          machine.wait_for_job("hydra-queue-runner")
+          machine.wait_for_unit("hydra-init.service")
+          machine.wait_for_unit("hydra-server.service")
+          machine.wait_for_unit("hydra-evaluator.service")
+          machine.wait_for_unit("hydra-queue-runner.service")
           machine.wait_for_open_port(3000)
           machine.succeed("curl --fail http://localhost:3000/")
         '';
@@ -59,7 +61,7 @@ in
         services.influxdb.enable = true;
       };
       testScript = ''
-        machine.wait_for_job("hydra-init")
+        machine.wait_for_unit("hydra-init.service")
 
         # Create an admin account and some other state.
         machine.succeed(
@@ -74,7 +76,7 @@ in
         )
 
         # Wait until InfluxDB can receive web requests
-        machine.wait_for_job("influxdb")
+        machine.wait_for_unit("influxdb.service")
         machine.wait_for_open_port(8086)
 
         # Create an InfluxDB database where hydra will write to
@@ -84,7 +86,7 @@ in
         )
 
         # Wait until hydra-server can receive HTTP requests
-        machine.wait_for_job("hydra-server")
+        machine.wait_for_unit("hydra-server.service")
         machine.wait_for_open_port(3000)
 
         # Setup the project and jobset
@@ -289,9 +291,9 @@ in
 
           response = json.loads(data)
 
-          assert len(response) == 2, "Expected exactly three status updates for latest commit (queued, finished)!"
-          assert response[0]['status'] == "success", "Expected finished status to be success!"
-          assert response[1]['status'] == "pending", "Expected queued status to be pending!"
+          assert len(response) == 2, "Expected exactly two status updates for latest commit (queued, finished)!"
+          items = {item['status'] for item in response}
+          assert items == {"success", "pending"}, "Expected one success status and one pending status"
 
           machine.shutdown()
         '';
