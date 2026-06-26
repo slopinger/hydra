@@ -188,24 +188,15 @@ void State::parseMachines(const std::string & contents)
         using MaxJobs = std::remove_const_t<decltype(nix::Machine::maxJobs)>;
 
         auto machine = std::make_shared<::Machine>(::Machine {{
-            // `storeUri`, not yet used
-            "",
-            // `systemTypes`, not yet used
-            {},
-            // `sshKey`
-            tokens[2] == "-" ? "" : tokens[2],
-            // `maxJobs`
-            tokens[3] != ""
+            .sshKey = tokens[2] == "-" ? "" : tokens[2],
+            .maxJobs = tokens[3] != ""
                 ? string2Int<MaxJobs>(tokens[3]).value()
                 : 1,
-            // `speedFactor`, not yet used
-            1,
-            // `supportedFeatures`
-            std::move(supportedFeatures),
-            // `mandatoryFeatures`
-            std::move(mandatoryFeatures),
-            // `sshPublicHostKey`
-            tokens[7] != "" && tokens[7] != "-"
+            // not yet used
+            .speedFactor = 1,
+            .supportedFeatures = std::move(supportedFeatures),
+            .mandatoryFeatures = std::move(mandatoryFeatures),
+            .sshPublicHostKey = tokens[7] != "" && tokens[7] != "-"
                 ? base64Decode(tokens[7])
                 : "",
         }});
