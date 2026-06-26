@@ -236,16 +236,18 @@ sub oidc_login :Path('/oidc-login') Args(0) {
     doEmailLogin($self, $c, "oidc", $claims->{email}, $claims->{name} // undef);
 
     if ($oidcConfig->{groups_to_roles}) {
-        $c->user->userroles->delete;
-        my @groups = @{ $claims->{groups} // [] };
-        foreach my $group ( @groups ) {
-            next unless defined($oidcConfig->{groups_to_roles}->{$group});
-            my @mapping = @{$oidcConfig->{groups_to_roles}->{$group}};
-            for my $mapped_role (@mapping) {
-                next unless $mapped_role;
-                $c->user->userroles->create({ role => $mapped_role });
+        $c->model('DB')->schema->txn_do(sub {
+            $c->user->userroles->delete;
+            my @groups = @{ $claims->{groups} // [] };
+            foreach my $group ( @groups ) {
+                next unless defined($oidcConfig->{groups_to_roles}->{$group});
+                my @mapping = @{$oidcConfig->{groups_to_roles}->{$group}};
+                for my $mapped_role (@mapping) {
+                    next unless $mapped_role;
+                    $c->user->userroles->create({ role => $mapped_role });
+                }
             }
-        }
+        });
     }
 
     $c->res->redirect($c->uri_for($c->session->{oidc_after}));
@@ -316,9 +318,11 @@ sub oidc_redirect :Path('/oidc-redirect') Args(0) {
 
     my ($self, $c) = @_;
 
-    my $after = "/" . ($c->req->params->{after} // "");
+    my $after = $c->req->params->{after} // "";
+    $after =~ s{^/+}{};
+    $after =~ s{\\}{}g;  # also strip backslashes (some browsers normalize \\ to //);
 
-    $c->session->{oidc_after} = $after;
+    $c->session->{oidc_after} = "/" . $after;
 
     my $oidc_client = get_oidc_client($c);
     my $state = UUID4::Tiny::create_uuid_string();
