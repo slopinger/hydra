@@ -254,7 +254,7 @@ END;
       [% INCLUDE renderBuildSteps type="Running" %]
     [% END %]
 
-    [% IF build.finished %]
+    [% IF build.stoptime != 0 %]
 
       [% IF steps && build.buildstatus != 0 && build.buildstatus != 4 && build.buildstatus != 6 %]
         <h3>Failed build steps</h3>

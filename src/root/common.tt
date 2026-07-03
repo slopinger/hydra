@@ -149,7 +149,10 @@ BLOCK renderBuildListBody;
           [% END %]
         </td>
       [% END %]
-      <td class="nowrap">[% t = showSchedulingInfo ? build.timestamp : build.stoptime; IF t; INCLUDE renderRelativeDate timestamp=(showSchedulingInfo ? build.timestamp : build.stoptime); ELSE; "-"; END %]</td>
+      <td class="nowrap">
+        [% t = showSchedulingInfo ? build.timestamp : build.stoptime; IF t; INCLUDE renderRelativeDate timestamp=(showSchedulingInfo ? build.timestamp : build.stoptime); ELSE; "-"; END %]
+        [% IF !build.finished AND build.timestamp AND build.stoptime %]<em> (Restarted)</em>[% END %]
+      </td>
       <td>[% !showSchedulingInfo and build.get_column('releasename') ? HTML.escape(build.get_column('releasename')) : HTML.escape(build.nixname) %]</td>
       <td class="nowrap"><tt>[% build.system | html %]</tt></td>
       [% IF showDescription %]
