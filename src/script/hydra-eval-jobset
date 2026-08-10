@@ -606,8 +606,16 @@ sub sendJobsetErrorNotification() {
     chomp $errorMsg;
 
     return unless $config->{email_notification} // 0;
-    return if $jobset->project->owner->emailonerror == 0;
     return if $errorMsg eq "";
+
+    my %addresses;
+    if ($jobset->project->owner->emailonerror == 0) {
+        $addresses{$jobset->project->owner->emailaddress} = 1;
+    }
+    foreach my $address (split /,/, ($jobset->emailoverride // "")) {
+        $address = trim $address;
+        $addresses{$address} = 1;
+    }
 
     my $projectName = $jobset->get_column('project');
     my $jobsetName = $jobset->name;
@@ -620,18 +628,20 @@ sub sendJobsetErrorNotification() {
         . "\n"
         . "Regards,\n\nThe Hydra build daemon.\n";
 
-    try {
-        sendEmail(
-            $config,
-            $jobset->project->owner->emailaddress,
-            "Hydra $projectName:$jobsetName evaluation error",
-            $body,
-            [ 'X-Hydra-Project' => $projectName
-            , 'X-Hydra-Jobset'  => $jobsetName
-            ]);
-    } catch {
-        warn "error sending email: $_\n";
-    };
+    for my $to (keys %addresses) {
+        try {
+            sendEmail(
+                $config,
+                $jobset->project->owner->emailaddress,
+                "Hydra $projectName:$jobsetName evaluation error",
+                $body,
+                [ 'X-Hydra-Project' => $projectName
+                , 'X-Hydra-Jobset'  => $jobsetName
+                ]);
+        } catch {
+            warn "error sending email: $_\n";
+        };
+    }
 }
 
 
