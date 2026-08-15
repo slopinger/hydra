@@ -17,7 +17,6 @@
 #include "db.hh"
 
 #include "lix/libstore/build-result.hh"
-#include "lix/libstore/machines.hh"
 #include "lix/libstore/parsed-derivations.hh"
 #include "lix/libstore/pathlocks.hh"
 #include "lix/libstore/serve-protocol.hh"
@@ -235,21 +234,17 @@ void getDependents(Step::ptr step, std::set<Build::ptr> & builds, std::set<Step:
 void visitDependencies(std::function<void(Step::ptr)> visitor, Step::ptr step);
 
 
-struct Machine : nix::Machine
+struct Machine
 {
     using ptr = std::shared_ptr<Machine>;
 
-    /* TODO Get rid of: `nix::Machine::storeUri` is normalized in a way
-       we are not yet used to, but once we are, we don't need this. */
-    std::string sshName;
+    bool enabled{true};
 
-    /* TODO Get rid once `nix::Machine::systemTypes` is a set not
-       vector. */
-    std::set<std::string> systemTypesSet;
-
-    /* TODO Get rid once `nix::Machine::systemTypes` is a `float` not
-       an `int`. */
+    std::string sshName, sshKey;
+    unsigned int maxJobs = 1;
+    std::set<std::string> systemTypesSet, supportedFeatures, mandatoryFeatures;
     float speedFactorFloat = 1.0;
+    std::string sshPublicHostKey;
 
     struct State {
         using ptr = std::shared_ptr<State>;

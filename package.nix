@@ -231,7 +231,7 @@ stdenv.mkDerivation (finalAttrs: {
       gnused
       breezy
       nix-eval-jobs
-    ] ++ lib.optionals stdenv.isLinux [ rpm dpkg cdrkit ]
+    ] ++ lib.optionals stdenv.hostPlatform.isLinux [ rpm dpkg cdrkit ]
   );
 
   OPENLDAP_ROOT = openldap;
@@ -285,6 +285,6 @@ stdenv.mkDerivation (finalAttrs: {
 
   dontStrip = true;
 
-  meta.description = "Build of Hydra on ${stdenv.system}";
+  meta.description = "Hydra, the Nix-based continuous build system";
   passthru = { inherit perlDeps nix; };
 })
