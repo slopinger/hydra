@@ -185,21 +185,18 @@ void State::parseMachines(const std::string & contents)
         for (auto & f : mandatoryFeatures)
             supportedFeatures.insert(f);
 
-        using MaxJobs = std::remove_const_t<decltype(nix::Machine::maxJobs)>;
+        using MaxJobs = std::remove_const_t<decltype(Machine::maxJobs)>;
 
-        auto machine = std::make_shared<::Machine>(::Machine {{
-            .sshKey = tokens[2] == "-" ? "" : tokens[2],
-            .maxJobs = tokens[3] != ""
+        auto machine = std::make_shared<::Machine>();
+        machine->sshKey = tokens[2] == "-" ? "" : tokens[2],
+        machine->maxJobs = tokens[3] != ""
                 ? string2Int<MaxJobs>(tokens[3]).value()
-                : 1,
-            // not yet used
-            .speedFactor = 1,
-            .supportedFeatures = std::move(supportedFeatures),
-            .mandatoryFeatures = std::move(mandatoryFeatures),
-            .sshPublicHostKey = tokens[7] != "" && tokens[7] != "-"
+                : 1;
+        machine->supportedFeatures = std::move(supportedFeatures);
+        machine->mandatoryFeatures = std::move(mandatoryFeatures);
+        machine->sshPublicHostKey = tokens[7] != "" && tokens[7] != "-"
                 ? base64Decode(tokens[7])
-                : "",
-        }});
+                : "";
 
         machine->sshName = tokens[0];
         machine->systemTypesSet = tokenizeString<StringSet>(tokens[1], ",");
