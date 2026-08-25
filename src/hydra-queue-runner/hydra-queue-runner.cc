@@ -540,7 +540,7 @@ void State::markSucceededBuild(pqxx::work & txn, Build::ptr build,
              product.type,
              product.subtype,
              product.fileSize ? std::make_optional(*product.fileSize) : std::nullopt,
-             product.sha256hash ? std::make_optional(product.sha256hash->to_string(HashFormat::Base16, false)) : std::nullopt,
+             product.sha256hash ? std::make_optional(base16Encode(*product.sha256hash)) : std::nullopt,
              product.path,
              product.name,
              product.defaultPath}).no_rows();
