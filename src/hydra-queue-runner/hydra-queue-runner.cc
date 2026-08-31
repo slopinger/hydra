@@ -997,8 +997,6 @@ int main(int argc, char * * argv)
             return true;
         }).parseCmdline(Strings(argv + 1, argv + argc));
 
-        settings.verboseBuild = true;
-
         State state{metricsAddrOpt, aio};
         if (status)
             state.showStatus(aio);
