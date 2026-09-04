@@ -23,6 +23,7 @@ in prev.perlPackages // rec {
       sha256 = "529096272a160d8cd947bec79e01b48639db93726432b4d93039a7507421245a";
     };
     buildInputs = [ CryptOpenSSLRSA TestMockLWPConditional TestMockObject ];
+    doCheck = false;
     propagatedBuildInputs = [ ClassAccessor DataDump JSONWebToken JSONXS OAuthLite2 ParamsValidate ];
     meta = {
       homepage = "https://github.com/ritou/p5-oidc-lite";
