@@ -127,6 +127,9 @@ END;
     </div>
   </li>
 
+  [% IF c.config.live_updates %]
+    <li class="nav-item"><a class="nav-link" href="#tabs-log" data-toggle="tab">Log</a></li>
+  [% END %]
   <li class="nav-item"><a class="nav-link active" href="#tabs-summary" data-toggle="tab">Summary</a></li>
   [% IF isAggregate %]<li class="nav-item"><a class="nav-link" href="#tabs-constituents" data-toggle="tab">Constituents</a></li>[% END %]
   <li class="nav-item"><a class="nav-link" href="#tabs-details" data-toggle="tab">Details</a></li>
@@ -139,6 +142,11 @@ END;
 </ul>
 
 <div id="generic-tabs" data-live-region class="tab-content">
+  [% IF c.config.live_updates %]
+    <div id="tabs-log" class="tab-pane" data-live-preserve>
+      [% INCLUDE "live-log.tt" step=0 %]
+    </div>
+  [% END %]
 
   <div id="tabs-summary" class="tab-pane active">
 

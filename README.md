@@ -11,16 +11,36 @@ maintained independently at https://github.com/slopinger/hydra. Changes here are
 so please don't report issues with this fork to the Lix project. `main` regularly merges upstream
 `main`.
 
-### Live updates
+### Live build events and logs
 
-The standard Hydra interface updates build status, evaluations, jobsets, the queue,
-and machines every five seconds without a page reload. Tabs, filters, scroll position,
-and loaded charts and dependency trees are preserved. Updates pause in hidden tabs
-and during form interaction; failed requests back off up to one minute.
+The standard Hydra interface subscribes to build and evaluation events. Build status,
+queue entries and evaluation results update as they change. Every build has a **Log**
+tab that streams output while the build runs, including its running dependency steps.
+The existing pretty/tail log pages stream too. **Follow output** scrolls with new lines;
+scrolling up pauses following. Reconnects resume from the last received byte.
 
-The browser refreshes the existing HTML pages (`src/root/static/js/live.js`); no
-separate frontend or API is needed. Forms and administration pages keep their usual
-behavior.
+Enable `services.hydra-dev.liveUpdates.enable = true` in the exported NixOS module.
+The separate `hydra-live` async service listens on `127.0.0.1:3002` by default. Route
+`/_live/events` and `/_live/log/*` to that port with response buffering disabled;
+all other requests go to the normal Hydra server. For Caddy:
+
+```caddyfile
+@live path /_live/events /_live/log/*
+reverse_proxy @live 127.0.0.1:3002 {
+    flush_interval -1
+}
+reverse_proxy 127.0.0.1:3000
+```
+
+The stream service uses PostgreSQL notifications for status changes and tails Hydra's
+build log files. It checks stream access through Hydra's own session/private-instance
+rules. Its database URI can be set with `liveUpdates.database` for remote databases.
+Tabs, filters, loaded charts and trees survive status updates. Instances without the
+stream service retain periodic updates, and temporary stream failures fall back to
+polling. Forms and administration pages retain their usual behavior.
+
+`nix build .#hydra-live` builds the service; `nix build .#checks.x86_64-linux.live`
+runs its stream tests. The main Hydra build also runs the controller/template tests.
 
 ## Branches
 

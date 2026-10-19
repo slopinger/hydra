@@ -12,6 +12,9 @@
     <meta http-equiv="X-UA-Compatible" content="IE=Edge" />
     [% INCLUDE style.tt %]
 
+    [% IF c.config.live_updates %]
+      <meta name="hydra-live-events" content="[% c.uri_for('/_live/events') %]" />
+    [% END %]
     [% tracker %]
 
   </head>
@@ -80,6 +83,10 @@
     [% PROCESS auth.tt %]
     [% IF live %]<script src="[% c.uri_for("/static/js/live.js", { v => version }) %]"></script>[% END %]
 
+    [% IF c.config.live_updates %]
+      <script src="[% c.uri_for('/static/js/events.js', {v => version}) %]"></script>
+      <script src="[% c.uri_for('/static/js/log-stream.js', {v => version}) %]"></script>
+    [% END %]
   </body>
 
 </html>

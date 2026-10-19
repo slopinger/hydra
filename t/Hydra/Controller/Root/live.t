@@ -36,4 +36,30 @@ unlike($json->content, qr/data-live-page/, 'JSON does not get the HTML shell');
 my $login = request(GET '/login', Accept => 'text/html');
 unlike($login->content, qr{static/js/live\.js}, 'Authentication pages do not refresh');
 
+
+subtest 'Stream authorization uses Hydra access rules' => sub {
+    is(request(GET '/_live/authorize')->code, 204, 'Public Hydra permits streams');
+    local Hydra->config->{private} = 1;
+    is(request(GET '/_live/authorize', Accept => 'application/json')->code, 403,
+       'Private Hydra rejects anonymous streams');
+};
+
+subtest 'Stream-enabled build and log pages' => sub {
+    local Hydra->config->{live_updates} = 1;
+    ok(evalSucceeds($jobset), 'Stream fixture evaluates');
+    my $build = queuedBuildsForJobset($jobset)->first;
+    $build->buildsteps->create({stepnr => 1, type => 0, busy => 1,
+        drvpath => $build->drvpath, starttime => time});
+    my $page = request(GET '/build/' . $build->id, Accept => 'text/html');
+    is($page->code, 200, 'Build renders with streams enabled');
+    like($page->content, qr/hydra-live-events/, 'Subscribes to build events');
+    like($page->content, qr/data-live-log/, 'Embeds streamed log');
+    unlike($page->content, qr/data-log-url="[^"]*\?step=/,
+        'Build stream follows steps instead of capturing a template loop variable');
+    like($page->content, qr/data-live-preserve/, 'Preserves log across status updates');
+    my $log = request(GET '/build/' . $build->id . '/log', Accept => 'text/html');
+    is($log->code, 200, 'Pretty log renders');
+    like($log->content, qr/data-live-log/, 'Pretty log uses streaming component');
+};
+
 done_testing;

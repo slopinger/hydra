@@ -21,6 +21,9 @@
   [% END %]
 </p>
 
+[% IF c.config.live_updates %]
+[% INCLUDE "live-log.tt" %]
+[% ELSE %]
 <div class="card bg-light"><div class="card-body"><pre class="log" id="contents">
 <em>Loading...</em>
 </pre></div></div>
@@ -48,5 +51,7 @@
     });
   });
 </script>
+
+[% END %]
 
 [% END %]

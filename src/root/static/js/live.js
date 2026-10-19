@@ -10,6 +10,8 @@ $(function() {
     var delay = 5000;
     var timer;
     var pending = false;
+    var connected = !!window.hydraStreamConnected;
+    var dirty = false;
 
     function regions(root) {
         var parts = Array.from(root.querySelectorAll(selector));
@@ -27,16 +29,18 @@ $(function() {
 
     function schedule() {
         clearTimeout(timer);
-        if (!document.hidden) timer = setTimeout(refresh, delay);
+        if (!document.hidden && !connected) timer = setTimeout(refresh, delay);
     }
 
     function refresh() {
-        if (pending || document.hidden) return;
+        if (document.hidden) return;
+        if (pending) { dirty = true; return; }
         // Avoid interrupting a menu, modal, text selection, or form interaction.
         if ($('.modal.show, .dropdown-menu.show, .popover').length ||
             $(document.activeElement).is('input, textarea, select, [contenteditable]') ||
             !window.getSelection().isCollapsed) {
-            schedule();
+            clearTimeout(timer);
+            timer = setTimeout(refresh, 1000);
             return;
         }
         pending = true;
@@ -52,7 +56,10 @@ $(function() {
             // Interaction can begin while the request is in flight.
             if ($('.modal.show, .dropdown-menu.show, .popover').length ||
                 $(document.activeElement).is('input, textarea, select, [contenteditable]') ||
-                !window.getSelection().isCollapsed) return;
+                !window.getSelection().isCollapsed) {
+                dirty = true;
+                return;
+            }
             var doc = new DOMParser().parseFromString(html, 'text/html');
             var fresh = doc.getElementById('hydra-content');
             if (!fresh || fresh.getAttribute('data-live-page') !== pageType) return;
@@ -68,9 +75,12 @@ $(function() {
                 var current = document.getElementById(part.id);
                 if (!current || snapshots.get(part.id) === markup) return;
                 // Preserve chart zoom, expanded trees and already loaded tabs.
-                part.querySelectorAll('[data-tab-uri]').forEach(function(tab) {
+                part.querySelectorAll('[data-tab-uri], [data-live-preserve]').forEach(function(tab) {
                     var old = document.getElementById(tab.id);
                     if (old && old.getAttribute('data-tab-uri') === tab.getAttribute('data-tab-uri')) {
+                        var log = old.querySelector('[data-live-log]');
+                        var freshLog = tab.querySelector('[data-live-log]');
+                        if (log && freshLog) log.dataset.logFinished = freshLog.dataset.logFinished;
                         tab.replaceWith(old);
                     } else {
                         delete tabsLoaded['#' + tab.id];
@@ -102,6 +112,7 @@ $(function() {
                     .text(local.format('YYYY-MM-DD HH:mm:ss')).addClass('is-local');
             });
             window.scrollTo(scrollX, scrollY);
+            document.dispatchEvent(new Event('hydra:updated'));
             delay = 5000;
             // Job matrices are lazy-loaded, with their own filter form. Update
             // only their results, leaving the filter and its handlers intact.
@@ -130,10 +141,23 @@ $(function() {
             delay = Math.min(delay * 2, 60000);
         }).always(function() {
             pending = false;
-            schedule();
+            if (dirty) {
+                dirty = false;
+                clearTimeout(timer);
+                timer = setTimeout(refresh, 200);
+            } else schedule();
         });
     }
 
+    document.addEventListener('hydra:connection', function(event) {
+        connected = event.detail;
+        clearTimeout(timer);
+        if (!connected) schedule();
+    });
+    document.addEventListener('hydra:change', function() {
+        clearTimeout(timer);
+        timer = setTimeout(refresh, 150);
+    });
     document.addEventListener('visibilitychange', function() {
         clearTimeout(timer);
         if (!document.hidden) refresh();
