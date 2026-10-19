@@ -4,6 +4,13 @@
 
 Hydra is a [Continuous Integration](https://en.wikipedia.org/wiki/Continuous_integration) service for [Nix](https://nixos.org/nix) based projects.
 
+## slopinger fork
+
+This is a soft fork of the [Lix project's Hydra](https://git.lix.systems/lix-project/hydra),
+maintained independently at https://github.com/slopinger/hydra. Changes here are not sent upstream,
+so please don't report issues with this fork to the Lix project. `main` regularly merges upstream
+`main`.
+
 ## Branches
 
 | Branch | Lix release | Maintained |
