@@ -1,6 +1,6 @@
 <div data-live-log [% HTML.attributes('data-log-url' => c.uri_for('/_live/log' build.id, step ? {step => step.stepnr} : {}), 'data-log-finished' => build.finished, 'data-build-url' => c.uri_for('/build' build.id)) %]>
   <p class="d-flex align-items-center">
-    <span data-log-status role="status">Connecting to build log...</span>
+    <span class="text-monospace" data-log-status role="status">Connecting to build log...</span>
     <label class="ml-auto mb-0"><input type="checkbox" data-log-follow checked /> Follow output</label>
   </p>
   <p data-log-step class="text-muted small"></p>
