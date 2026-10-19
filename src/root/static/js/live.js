@@ -37,7 +37,7 @@ $(function() {
         if (pending) { dirty = true; return; }
         // Avoid interrupting a menu, modal, text selection, or form interaction.
         if ($('.modal.show, .dropdown-menu.show, .popover').length ||
-            $(document.activeElement).is('input, textarea, select, [contenteditable]') ||
+            $(document.activeElement).is('input:not([data-log-follow]), textarea, select, [contenteditable]') ||
             !window.getSelection().isCollapsed) {
             clearTimeout(timer);
             timer = setTimeout(refresh, 1000);
@@ -55,7 +55,7 @@ $(function() {
             if (document.hidden || window.location.href.split('#')[0] !== uri) return;
             // Interaction can begin while the request is in flight.
             if ($('.modal.show, .dropdown-menu.show, .popover').length ||
-                $(document.activeElement).is('input, textarea, select, [contenteditable]') ||
+                $(document.activeElement).is('input:not([data-log-follow]), textarea, select, [contenteditable]') ||
                 !window.getSelection().isCollapsed) {
                 dirty = true;
                 return;
@@ -74,20 +74,33 @@ $(function() {
                 var markup = part.innerHTML;
                 var current = document.getElementById(part.id);
                 if (!current || snapshots.get(part.id) === markup) return;
-                // Preserve chart zoom, expanded trees and already loaded tabs.
-                part.querySelectorAll('[data-tab-uri], [data-live-preserve]').forEach(function(tab) {
+                // Keep persistent panes attached to their existing parent, so
+                // status changes cannot blur log controls or reset log scrolling.
+                var preserved = new Map();
+                Array.from(part.children).forEach(function(tab) {
+                    if (!tab.matches('[data-tab-uri], [data-live-preserve]')) return;
                     var old = document.getElementById(tab.id);
-                    if (old && old.getAttribute('data-tab-uri') === tab.getAttribute('data-tab-uri')) {
+                    if (old && old.parentNode === current &&
+                        old.getAttribute('data-tab-uri') === tab.getAttribute('data-tab-uri')) {
                         var log = old.querySelector('[data-live-log]');
                         var freshLog = tab.querySelector('[data-live-log]');
                         if (log && freshLog) log.dataset.logFinished = freshLog.dataset.logFinished;
-                        tab.replaceWith(old);
-                    } else {
-                        delete tabsLoaded['#' + tab.id];
-                    }
+                        preserved.set(tab.id, old);
+                    } else delete tabsLoaded['#' + tab.id];
                 });
                 $(current).find('.hydra-popover').popover('dispose');
-                $(current).empty().append(Array.from(part.childNodes));
+                var keep = new Set(preserved.values());
+                Array.from(current.childNodes).forEach(function(node) {
+                    if (!keep.has(node)) $(node).remove();
+                });
+                var next = current.firstChild;
+                Array.from(part.childNodes).forEach(function(node) {
+                    var old = node.nodeType === 1 && preserved.get(node.id);
+                    if (old) {
+                        if (old !== next) current.insertBefore(old, next);
+                        next = old.nextSibling;
+                    } else current.insertBefore(node, next);
+                });
                 $(current).find('.hydra-popover').popover({});
                 snapshots.set(part.id, markup);
             });
