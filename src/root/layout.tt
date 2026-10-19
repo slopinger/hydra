@@ -60,7 +60,9 @@
         [% IF first %]<br />[% first = 0; END; %]
       [% END %]
 
-      [% content %]
+      <main id="hydra-content" [% IF live %]data-live-page="[% live | html %]"[% END %]>
+        [% content %]
+      </main>
 
       <footer class="navbar">
         <hr />
@@ -76,6 +78,7 @@
     </div>
 
     [% PROCESS auth.tt %]
+    [% IF live %]<script src="[% c.uri_for("/static/js/live.js") %]"></script>[% END %]
 
   </body>
 

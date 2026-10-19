@@ -1,4 +1,4 @@
-[% WRAPPER layout.tt
+[% WRAPPER layout.tt live="build"
   title="Build $id of job " _ makeNameTextForJob(jobset, job)
   titleHTML="Build $id of job " _ linkToJob(jobset, job)
 %]
@@ -102,7 +102,7 @@ END;
   </table>
 [% END %]
 
-<ul class="nav nav-tabs">
+<ul id="live-tabs" data-live-region class="nav nav-tabs">
   <li class="nav-item dropdown">
     <a class="nav-link dropdown-toggle" data-toggle="dropdown" href="#" role="button" area-haspopup="true" aria-expanded="false">Actions</a>
     <div class="dropdown-menu">
@@ -138,7 +138,7 @@ END;
   [% IF runcommandlogProblem || runcommandlogs.size() > 0 %]<li class="nav-item"><a class="nav-link" href="#tabs-runcommandlogs" data-toggle="tab">RunCommand Logs[% IF runcommandlogProblem %] <span class="badge badge-warning">Disabled</span>[% END %]</a></li>[% END %]
 </ul>
 
-<div id="generic-tabs" class="tab-content">
+<div id="generic-tabs" data-live-region class="tab-content">
 
   <div id="tabs-summary" class="tab-pane active">
 

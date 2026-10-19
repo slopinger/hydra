@@ -1,4 +1,4 @@
-[% WRAPPER layout.tt
+[% WRAPPER layout.tt live="job"
     title=makeNameTextForJob(jobset, job)
     titleHTML=makeNameLinksForJob(jobset, job)
     starUri=c.uri_for(c.controller('Job').action_for('star'), c.req.captures)
@@ -15,7 +15,7 @@
 removed or had an evaluation error.</div>
 [% END %]
 
-<ul class="nav nav-tabs">
+<ul id="live-tabs" data-live-region class="nav nav-tabs">
   <li class="nav-item"><a class="nav-link active" href="#tabs-status" data-toggle="tab">Status</a></li>
   [% IF constituentJobs.size > 0 %]
     <li class="nav-item"><a class="nav-link" href="#tabs-constituents" data-toggle="tab">Constituents</a></li>
@@ -24,7 +24,7 @@ removed or had an evaluation error.</div>
   <li class="nav-item"><a class="nav-link" href="#tabs-links" data-toggle="tab">Links</a></li>
 </ul>
 
-<div id="generic-tabs" class="tab-content">
+<div id="generic-tabs" data-live-region class="tab-content">
 
   <div id="tabs-status" class="tab-pane active">
     [% IF lastBuilds.size != 0 %]

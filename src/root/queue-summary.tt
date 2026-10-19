@@ -1,4 +1,4 @@
-[% WRAPPER layout.tt title="Queue summary" %]
+[% WRAPPER layout.tt live="queue-summary" title="Queue summary" %]
 [% PROCESS common.tt %]
 
 [% IF queued.size == 0 %]

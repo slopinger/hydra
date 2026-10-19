@@ -40,7 +40,7 @@ function makeTreeCollapsible(tab) {
 }
 
 $(document).ready(function() {
-    $("table.clickable-rows").click(function(event) {
+    $(document).on("click", "table.clickable-rows", function(event) {
         if ($(event.target).closest("a").length) return;
         link = $(event.target).parents("tr").find("a.row-link");
         if (link.length == 1)
@@ -70,7 +70,7 @@ $(document).ready(function() {
             $('.nav-item:not(.dropdown) a',this).first().tab('show');
     });
 
-    $('.nav-tabs > .nav-item:not(.dropdown) a[href^="#"]').on('click', function() {
+    $(document).on('click', '.nav-tabs > .nav-item:not(.dropdown) a[href^="#"]', function() {
         history.replaceState(null, null, window.location.href.split("#")[0] + $(this).attr("href"));
     });
 
@@ -139,28 +139,24 @@ $(document).ready(function() {
 
 var tabsLoaded = {};
 
-function makeLazyTab(tabName, uri, callback) {
-    $('.nav-tabs').bind('show.bs.tab', function(e) {
-        var pattern = /#.+/gi;
-        var id = e.target.toString().match(pattern)[0];
-        if (id == '#' + tabName && !tabsLoaded[id]) {
-          tabsLoaded[id] = 1;
-          $('#' + tabName).load(uri, function(response, status, xhr) {
-            var lazy = xhr.getResponseHeader("X-Hydra-Lazy") === "Yes";
-            var tab = $('#' + tabName);
-            if (status == "error" && !lazy) {
-              tab.html("<div class='alert alert-error'>Error loading tab: " + xhr.status + " " + xhr.statusText + "</div>");
-            }
-            else {
-              tab.html(response);
-              if (callback) {
-                callback(tab);
-              }
-            }
-          });
+// Delegation keeps lazy tabs working when live updates replace the navigation.
+$(document).on('show.bs.tab', '.nav-tabs a', function(e) {
+    var id = $(e.target).attr('href');
+    if (!id || id[0] !== '#') return;
+    var tab = $(document.getElementById(id.slice(1)));
+    var uri = tab.attr('data-tab-uri');
+    if (!uri || tabsLoaded[id]) return;
+    tabsLoaded[id] = 1;
+    tab.load(uri, function(response, status, xhr) {
+        if (status === 'error' && xhr.getResponseHeader('X-Hydra-Lazy') !== 'Yes') {
+            delete tabsLoaded[id];
+            tab.text('Error loading tab: ' + xhr.status + ' ' + xhr.statusText);
+        } else {
+            var callback = window[tab.attr('data-tab-callback')];
+            if (typeof callback === 'function') callback(tab);
         }
     });
-};
+});
 
 function escapeHTML(s) {
     return $('<div/>').text(s).html();

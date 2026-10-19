@@ -11,6 +11,17 @@ maintained independently at https://github.com/slopinger/hydra. Changes here are
 so please don't report issues with this fork to the Lix project. `main` regularly merges upstream
 `main`.
 
+### Live updates
+
+The standard Hydra interface updates build status, evaluations, jobsets, the queue,
+and machines every five seconds without a page reload. Tabs, filters, scroll position,
+and loaded charts and dependency trees are preserved. Updates pause in hidden tabs
+and during form interaction; failed requests back off up to one minute.
+
+The browser refreshes the existing HTML pages (`src/root/static/js/live.js`); no
+separate frontend or API is needed. Forms and administration pages keep their usual
+behavior.
+
 ## Branches
 
 | Branch | Lix release | Maintained |

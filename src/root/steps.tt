@@ -1,4 +1,4 @@
-[% WRAPPER layout.tt title="Latest steps" %]
+[% WRAPPER layout.tt live="steps" title="Latest steps" %]
 [% PROCESS common.tt %]
 
 <p>Showing steps [% (page - 1) * resultsPerPage + 1 %] - [% (page - 1)

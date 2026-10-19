@@ -556,16 +556,9 @@ BLOCK renderLogLinks %]
 
 
 BLOCK makeLazyTab %]
-  <div [% HTML.attributes(id => tabName) %] class="tab-pane">
+  <div [% HTML.attributes(id => tabName, 'data-tab-uri' => uri, 'data-tab-callback' => callback) %] class="tab-pane">
     <center><span class="spinner-border spinner-border-sm"/></center>
   </div>
-  <script>
-    [% IF callback.defined %]
-    $(function() { makeLazyTab("[% HTML.escape(tabName) %]", "[% uri %]", [% callback %] ); });
-    [% ELSE %]
-    $(function() { makeLazyTab("[% HTML.escape(tabName) %]", "[% uri %]", null ); });
-    [% END %]
-  </script>
 [% END;
 
 

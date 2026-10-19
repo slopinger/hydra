@@ -1,4 +1,4 @@
-[% WRAPPER layout.tt title="Machine status" %]
+[% WRAPPER layout.tt live="machine-status" title="Machine status" %]
 [% PROCESS common.tt %]
 [% USE format %]
 

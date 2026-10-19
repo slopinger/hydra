@@ -1,4 +1,4 @@
-[% WRAPPER layout.tt
+[% WRAPPER layout.tt live="jobset-eval"
   title="Evaluation $eval.id of jobset " _ makeNameTextForJobset(jobset)
   titleHTML="Evaluation $eval.id of jobset " _ linkToJobset(jobset) %]
 [% PROCESS common.tt %]
@@ -42,7 +42,7 @@ HTML.attributes(href => c.uri_for(c.controller('JobsetEval').action_for('view'),
   </div>
 </form>
 
-<ul class="nav nav-tabs">
+<ul id="live-tabs" data-live-region class="nav nav-tabs">
   [% IF c.user_exists %]
     <li class="nav-item dropdown">
       <a class="nav-link dropdown-toggle" data-toggle="dropdown" href="#">Actions</a>
@@ -106,7 +106,7 @@ HTML.attributes(href => c.uri_for(c.controller('JobsetEval').action_for('view'),
   [% INCLUDE renderBuildListFooter %]
 [% END %]
 
-<div class="tab-content">
+<div data-live-region id="live-tab-content" class="tab-content">
 
   <div id="tabs-aborted" class="tab-pane">
     [% INCLUDE renderSome builds=aborted tabname="#tabs-aborted" %]

@@ -1,7 +1,7 @@
-[% WRAPPER layout.tt title="Project $project.name" %]
+[% WRAPPER layout.tt live="project" title="Project $project.name" %]
 [% PROCESS common.tt %]
 
-<ul class="nav nav-tabs">
+<ul id="live-tabs" data-live-region class="nav nav-tabs">
   [% IF c.user_exists %]
     <li class="nav-item dropdown">
       <a class="nav-link dropdown-toggle" data-toggle="dropdown" href="#">Actions</a>
@@ -19,7 +19,7 @@
   <li class="nav-item"><a class="nav-link" href="#tabs-configuration" data-toggle="tab">Configuration</a></li>
 </ul>
 
-<div class="tab-content">
+<div data-live-region id="live-tab-content" class="tab-content">
 
   <script type="text/javascript">
     function showJobsets() {
@@ -35,7 +35,7 @@
     };
 
     $(document).ready(function() {
-      $('#show-hidden, #show-disabled').on('click', function(e) {
+      $(document).on('click', '#show-hidden, #show-disabled', function(e) {
         $(this).toggleClass('active');
         showJobsets();
         return false;
@@ -52,9 +52,9 @@
           This project has the following jobsets:
         </div>
         <div class="col-auto">
-          <label id="show-disabled" class="btn btn-secondary" data-toggle="button">Show disabled jobsets</label>
+          <label id="show-disabled" class="btn btn-secondary">Show disabled jobsets</label>
           [% IF isProjectOwner %]
-            <label id="show-hidden" class="btn btn-secondary" data-toggle="button">Show hidden jobsets</label>
+            <label id="show-hidden" class="btn btn-secondary">Show hidden jobsets</label>
           [% END %]
         </div>
       </div>

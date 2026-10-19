@@ -1,4 +1,4 @@
-[% WRAPPER layout.tt
+[% WRAPPER layout.tt live="all"
 titleHTML="Latest builds" _
     (job ? " for job " _ linkToJob(jobset, job) :
      jobset ? " for jobset " _ linkToJobset(jobset) :

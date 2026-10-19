@@ -1,4 +1,4 @@
-[% WRAPPER layout.tt title="Overview" hideHeader=1 %]
+[% WRAPPER layout.tt live="overview" title="Overview" hideHeader=1 %]
 [% PROCESS common.tt %]
 
 [% IF newsItems.size != 0 %]
@@ -15,8 +15,6 @@
 
 <div class="page-header">Projects</div>
 
-[% IF projects.size != 0 %]
-
 <script type="text/javascript">
   function showProjects() {
     var showDisabled = $('#show-disabled').hasClass('active');
@@ -29,7 +27,7 @@
   };
 
   $(document).ready(function() {
-    $('#show-disabled').on('click', function(e) {
+    $(document).on('click', '#show-disabled', function(e) {
       $(this).toggleClass('active');
       showProjects();
       return false;
@@ -39,8 +37,10 @@
   });
 </script>
 
+[% IF projects.size != 0 %]
+
 <p>The following projects are hosted on this server:
-<label id="show-disabled" class="btn btn-secondary btn-sm float-right" data-toggle="button">Show disabled projects</label>
+<label id="show-disabled" class="btn btn-secondary btn-sm float-right">Show disabled projects</label>
 </p>
 
 <table class="table table-condensed table-striped clickable-rows">

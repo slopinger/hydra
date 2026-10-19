@@ -1,4 +1,4 @@
-[% WRAPPER layout.tt title="Queue" %]
+[% WRAPPER layout.tt live="queue" title="Queue" %]
 [% PROCESS common.tt %]
 
 [% IF resource.size == 0 %]

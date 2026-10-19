@@ -1,4 +1,4 @@
-[% WRAPPER layout.tt
+[% WRAPPER layout.tt live="evals"
   title=
     (build ? "Evaluations containing build $build.id" :
      jobset ? "Evaluations of jobset " _ makeNameTextForJobset(jobset) :

@@ -34,6 +34,7 @@
   });
 </script>
 
+<div id="live-job-results">
 [% IF jobs.size == 0 %]
 
   <div class="alert alert-warning">There are no matching jobs.</div>
@@ -70,3 +71,5 @@
   </table>
 
 [% END %]
+
+</div>
