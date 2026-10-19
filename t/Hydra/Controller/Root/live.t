@@ -18,7 +18,8 @@ for my $path ('/', '/project/tests', '/jobset/tests/basic', '/queue', '/machines
         my $res = request(GET $path, Accept => 'text/html');
         ok($res->is_success, 'Standard HTML page works');
         like($res->content, qr/data-live-page="/, 'Enables live updates');
-        like($res->content, qr{static/js/live\.js}, 'Loads the refresh script');
+        like($res->content, qr{static/js/common\.js\?v=}, 'Versions the shared handlers');
+        like($res->content, qr{static/js/live\.js\?v=}, 'Versions the refresh script');
         unlike($res->content, qr{static/ui/|/_ui/|type="importmap"}, 'Uses the standard interface');
     };
 }

@@ -78,7 +78,7 @@
     </div>
 
     [% PROCESS auth.tt %]
-    [% IF live %]<script src="[% c.uri_for("/static/js/live.js") %]"></script>[% END %]
+    [% IF live %]<script src="[% c.uri_for("/static/js/live.js", { v => version }) %]"></script>[% END %]
 
   </body>
 
