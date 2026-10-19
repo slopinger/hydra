@@ -11,7 +11,7 @@
         var follow = panel.querySelector('[data-log-follow]');
         var notice = panel.querySelector('[data-log-notice]');
         var step = panel.querySelector('[data-log-step]');
-        var source, cursor = '', done = false, text = '';
+        var source, retry, retryDelay = 1000, cursor = '', done = false, text = '';
         var subject = new URL(panel.dataset.logUrl, location.href).searchParams.has('step') ? 'Step' : 'Build';
         function visible() {
             var tab = panel.closest('.tab-pane');
@@ -36,8 +36,19 @@
             var url = new URL(panel.dataset.logUrl, location.href);
             if (cursor) url.searchParams.set('cursor', cursor);
             source = new EventSource(url);
-            source.onopen = function() { status.textContent = 'Connected — waiting for output'; };
-            source.onerror = function() { status.textContent = 'Connection interrupted — reconnecting...'; };
+            var current = source;
+            source.onopen = function() {
+                retryDelay = 1000;
+                status.textContent = 'Connected — waiting for output';
+            };
+            source.onerror = function() {
+                if (source !== current) return;
+                status.textContent = 'Connection interrupted — reconnecting...';
+                source.close(); source = null;
+                clearTimeout(retry);
+                retry = setTimeout(connect, retryDelay);
+                retryDelay = Math.min(retryDelay * 2, 30000);
+            };
             source.addEventListener('state', function(event) {
                 var data = JSON.parse(event.data);
                 status.textContent = data.status === 'queued' ? 'Queued — waiting for a build step' :
@@ -68,7 +79,10 @@
             if (done && panel.dataset.logFinished === '0') {
                 done = false; cursor = ''; text = ''; output.textContent = '';
             }
-            if (!visible() && source) { source.close(); source = null; }
+            if (!visible()) {
+                clearTimeout(retry);
+                if (source) { source.close(); source = null; }
+            }
             connect();
         }
         output.addEventListener('scroll', function() {
