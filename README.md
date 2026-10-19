@@ -42,6 +42,15 @@ polling. Forms and administration pages retain their usual behavior.
 `nix build .#hydra-live` builds the service; `nix build .#checks.x86_64-linux.live`
 runs its stream tests. The main Hydra build also runs the controller/template tests.
 
+To try the live interface, create a legacy jobset using `examples/live-demo.nix`
+from a Git input named `src` pointing to this repository. Add a `nixpkgs` checkout
+input and a string input named `run` (for example `demo-1`). The five x86_64-linux
+jobs print progress every two seconds: successes after 30 seconds, 3 minutes and
+10 minutes, an intentional failure after 90 seconds, and a 30-second job that
+waits for the short success. These jobs mostly sleep. Use manual evaluation with
+polling disabled; change `run` before evaluating again to create fresh builds
+whose successful outputs are not already in the store.
+
 ## Branches
 
 | Branch | Lix release | Maintained |
