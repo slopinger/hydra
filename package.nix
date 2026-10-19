@@ -264,6 +264,9 @@ stdenv.mkDerivation (finalAttrs: {
 
   preCheck = ''
     export LOGNAME=''${LOGNAME:-foo}
+    # Test files start separate databases and evaluators. Starting dozens at
+    # once on CI makes their short subprocess deadlines expire under load.
+    export YATH_JOB_COUNT=''${YATH_JOB_COUNT:-8}
     # set $HOME for bzr so it can create its trace file
     export HOME=$(mktemp -d)
   '';
