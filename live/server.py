@@ -48,6 +48,7 @@ class LogReader:
         self.truncated = False
         self.raw = False
         self.rewound = False
+        self.allow_archives = True
 
     def open(self):
         if self.path.is_file():
@@ -63,9 +64,9 @@ class LogReader:
             self.rewound = offset is not None and offset > size
             self.position = 0 if self.rewound else max(0, offset or 0)
             self.handle.seek(self.position)
-        elif self.path.with_suffix(self.path.suffix + '.bz2').is_file():
+        elif self.allow_archives and self.path.with_suffix(self.path.suffix + '.bz2').is_file():
             self.handle = bz2.open(str(self.path) + '.bz2', 'rb')
-        elif self.path.with_suffix(self.path.suffix + '.zst').is_file():
+        elif self.allow_archives and self.path.with_suffix(self.path.suffix + '.zst').is_file():
             self.handle = zstandard.open(str(self.path) + '.zst', 'rb')
         else:
             return False
@@ -252,7 +253,8 @@ class Streams:
                     generation = key
                     if not resume:
                         await send(response, 'reset', {'step': state['step'], 'drvpath': state['drvpath']})
-                while True:
+                reader.allow_archives = state['finished']
+                while state['status'] != 'queued':
                     text, more, reset = await asyncio.to_thread(reader.read)
                     if reset:
                         await send(response, 'reset', {'step': state['step'], 'drvpath': state['drvpath']})

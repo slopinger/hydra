@@ -178,6 +178,33 @@ class StreamTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(done['available'])
         self.assertEqual(done['buildstatus'], 0)
 
+    async def test_active_build_waits_for_new_raw_log_instead_of_old_archive(self):
+        Path(str(self.path) + '.bz2').write_bytes(bz2.compress(b'previous run\n'))
+        self.streams.pool.steps = [{'stepnr': 1, 'busy': 1, 'status': None,
+                                   'starttime': 100, 'drvpath': DRV}]
+        response = await self.client.get('/_live/log/1', headers=self.headers)
+        await event(response, 'reset')
+        await asyncio.sleep(.4)
+        self.path.write_bytes(b'new running output\n')
+        self.assertEqual((await event(response, 'log'))['text'], 'new running output\n')
+        self.streams.pool.build['finished'] = 1
+        self.streams.pool.steps[0]['busy'] = 0
+        await event(response, 'done')
+
+    async def test_queued_restart_does_not_replay_the_previous_raw_log(self):
+        self.path.write_bytes(b'previous run\n')
+        self.streams.pool.steps = [{'stepnr': 1, 'busy': 0, 'status': 0,
+                                   'starttime': 100, 'drvpath': DRV}]
+        response = await self.client.get('/_live/log/1', headers=self.headers)
+        await event(response, 'reset')
+        await asyncio.sleep(.4)
+        self.path.write_bytes(b'restarted output\n')
+        self.streams.pool.steps[0].update(busy=1, starttime=200)
+        self.assertEqual((await event(response, 'log'))['text'], 'restarted output\n')
+        self.streams.pool.build['finished'] = 1
+        self.streams.pool.steps[0]['busy'] = 0
+        await event(response, 'done')
+
     async def test_reconnect_resumes_and_finished_archive(self):
         self.path.write_bytes(b'first\nsecond\n')
         self.streams.pool.build['finished'] = 1
