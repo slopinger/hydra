@@ -289,5 +289,5 @@ stdenv.mkDerivation (finalAttrs: {
   dontStrip = true;
 
   meta.description = "Hydra, the Nix-based continuous build system";
-  passthru = { inherit perlDeps nix; };
+  passthru = { inherit perlDeps nix; live = pkgs.callPackage ./live {}; };
 })

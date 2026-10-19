@@ -7,3 +7,5 @@ result
 result-*
 .hydra-data
 outputs
+
+/live/__pycache__/

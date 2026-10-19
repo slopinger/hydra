@@ -98,6 +98,25 @@ in
         '';
       };
 
+      liveUpdates = {
+        enable = mkEnableOption "server-sent build events and streaming logs";
+        package = mkOption {
+          type = types.package;
+          default = cfg.package.live;
+          description = "The Hydra live stream service package.";
+        };
+        port = mkOption {
+          type = types.port;
+          default = 3002;
+          description = "Loopback port for the async stream service. Proxy /_live/events and /_live/log/* to it without response buffering.";
+        };
+        database = mkOption {
+          type = types.str;
+          default = "postgresql://hydra@/hydra?host=/run/postgresql";
+          description = "PostgreSQL connection URI for events and build state. Passwords can use the existing pgpass file.";
+        };
+      };
+
       minimumDiskFree = mkOption {
         type = types.int;
         default = 0;
@@ -235,6 +254,7 @@ in
 
     services.hydra-dev.extraConfig =
       ''
+        live_updates = ${if cfg.liveUpdates.enable then "1" else "0"}
         using_frontend_proxy = 1
         base_uri = ${cfg.hydraURL}
         notification_sender = ${cfg.notificationSender}
@@ -336,6 +356,29 @@ in
             Restart = "always";
           };
       };
+
+    systemd.services.hydra-live = mkIf cfg.liveUpdates.enable {
+      wantedBy = [ "multi-user.target" ];
+      requires = [ "hydra-server.service" ];
+      after = [ "hydra-server.service" ];
+      environment = {
+        HYDRA_LIVE_DATABASE = cfg.liveUpdates.database;
+        HYDRA_LIVE_LOGS = "${baseDir}/build-logs";
+        HYDRA_LIVE_AUTHORIZE = "http://127.0.0.1:${toString cfg.port}/_live/authorize";
+        HYDRA_LIVE_PORT = toString cfg.liveUpdates.port;
+        PGPASSFILE = "${baseDir}/pgpass-www";
+      };
+      serviceConfig = {
+        ExecStart = "${cfg.liveUpdates.package}/bin/hydra-live";
+        User = "hydra-www";
+        Group = "hydra";
+        Restart = "always";
+        RestartSec = 2;
+        NoNewPrivileges = true;
+        ProtectSystem = "strict";
+        ProtectHome = true;
+      };
+    };
 
     systemd.services.hydra-queue-runner =
       { wantedBy = [ "multi-user.target" ];

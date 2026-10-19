@@ -36,6 +36,10 @@
 
       hydraJobs = {
 
+        live = forEachSystem (system: packages.${system}.hydra-live);
+        liveTests = forEachSystem (system: checks.${system}.live);
+
+
         build = forEachSystem (system: packages.${system}.hydra);
 
         buildNoTests = forEachSystem (system:
@@ -64,12 +68,14 @@
 
       checks = forEachSystem (system: {
         build = hydraJobs.build.${system};
+        live = packages.${system}.hydra-live.tests.tests;
         install = hydraJobs.tests.install.${system};
         validate-openapi = hydraJobs.tests.validate-openapi.${system};
       });
 
       packages = forEachSystem (system: {
         hydra = pkgsBySystem.${system}.hydra;
+        hydra-live = pkgsBySystem.${system}.hydra.live;
         default = pkgsBySystem.${system}.hydra;
       });
 
