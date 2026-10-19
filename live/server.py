@@ -110,10 +110,14 @@ class Streams:
         self.http = None
         self.listener = None
 
+    def http_session(self):
+        return aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=10),
+                                     cookie_jar=aiohttp.DummyCookieJar())
+
     async def start(self, app):
         self.pool = await asyncpg.create_pool(self.database, min_size=1, max_size=4,
                                              command_timeout=10)
-        self.http = aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=10))
+        self.http = self.http_session()
         self.listener = asyncio.create_task(self.listen())
 
     async def stop(self, app):
@@ -309,7 +313,7 @@ def main():
                       os.environ.get('HYDRA_LIVE_LOGS', '/var/lib/hydra/build-logs'),
                       os.environ.get('HYDRA_LIVE_AUTHORIZE', 'http://127.0.0.1:3000/_live/authorize'))
     web.run_app(create_app(streams), host='127.0.0.1',
-                port=int(os.environ.get('HYDRA_LIVE_PORT', '3002')), handler_cancellation=True)
+                port=int(os.environ.get('HYDRA_LIVE_PORT', '3002')), handler_cancellation=True, shutdown_timeout=2)
 
 
 if __name__ == '__main__':

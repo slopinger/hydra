@@ -4,7 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from aiohttp import ClientSession, web
+from aiohttp import web
 from aiohttp.test_utils import TestClient, TestServer
 import zstandard
 
@@ -94,7 +94,7 @@ class FakePool:
 class TestStreams(Streams):
     async def start(self, app):
         self.pool = FakePool()
-        self.http = ClientSession()
+        self.http = self.http_session()
 
     async def stop(self, app):
         await self.http.close()
@@ -120,12 +120,15 @@ class StreamTests(unittest.IsolatedAsyncioTestCase):
         auth = web.Application()
 
         async def authorize(request):
-            return web.Response(status=204 if request.cookies.get('session') == 'allowed' else 403)
+            response = web.Response(status=204 if request.cookies.get('session') == 'allowed' else 403)
+            if response.status == 204:
+                response.set_cookie('session', 'allowed')
+            return response
 
         auth.router.add_get('/authorize', authorize)
         self.auth = TestServer(auth)
         await self.auth.start_server()
-        self.streams = TestStreams('', self.temp.name, str(self.auth.make_url('/authorize')))
+        self.streams = TestStreams('', self.temp.name, str(self.auth.make_url('/authorize').with_host('localhost')))
         self.client = TestClient(TestServer(create_app(self.streams), handler_cancellation=True))
         await self.client.start_server()
         self.headers = {'Cookie': 'session=allowed'}
@@ -142,6 +145,13 @@ class StreamTests(unittest.IsolatedAsyncioTestCase):
                              ('/_live/log/1?step=9', 404)]:
             response = await self.client.get(path, headers=self.headers)
             self.assertEqual(response.status, status)
+
+    async def test_authorization_is_not_reused_between_clients(self):
+        response = await self.client.get('/_live/events', headers=self.headers)
+        await event(response, 'change')
+        response.close()
+        anonymous = await self.client.get('/_live/events')
+        self.assertEqual(anonymous.status, 403)
 
     async def test_notifications_are_pushed_on_one_connection(self):
         response = await self.client.get('/_live/events', headers=self.headers)
