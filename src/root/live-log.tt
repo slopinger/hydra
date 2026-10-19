@@ -3,7 +3,7 @@
     <span class="text-monospace" data-log-status role="status">Connecting to build log...</span>
     <label class="ml-auto mb-0"><input type="checkbox" data-log-follow checked /> Follow output</label>
   </p>
-  <p data-log-step class="text-muted small"></p>
+  <p data-log-step class="text-muted text-monospace small"></p>
   <div class="card bg-light"><div class="card-body p-2">
     <pre class="log mb-0" data-log-output tabindex="0" aria-label="Build log" style="max-height: 65vh; overflow: auto; white-space: pre-wrap;"></pre>
   </div></div>
