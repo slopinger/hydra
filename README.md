@@ -18,6 +18,8 @@ queue entries and evaluation results update as they change. Every build has a **
 tab that streams output while the build runs, including its running dependency steps.
 The existing pretty/tail log pages stream too. **Follow output** scrolls with new lines;
 scrolling up pauses following. Reconnects resume from the last received byte.
+The dashboard opens on **My Jobsets** by default; **My Jobs** and **Starred Jobs**
+remain available as tabs, including direct links to a specific tab.
 
 Enable `services.hydra-dev.liveUpdates.enable = true` in the exported NixOS module.
 The separate `hydra-live` async service listens on `127.0.0.1:3002` by default. Route
